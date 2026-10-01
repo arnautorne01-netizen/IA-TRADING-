@@ -87,6 +87,10 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center;cursor:pointer;background:var(--bg)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
+.quick .opt{border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
 .thumb{position:relative;display:inline-block}
 .thumb img{height:72px;max-width:140px;object-fit:cover;border-radius:4px;border:1px solid var(--line);display:block}
 .thumb button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--down);cursor:pointer;font:600 12px var(--f-body);line-height:1}
@@ -321,12 +325,22 @@ details summary{cursor:pointer;font-weight:600}
       <h2>Mis operaciones</h2>
       <span class="muted small" id="o-strip"></span>
     </div>
+    <div class="panel">
+      <h3>Añade operaciones sin escribir</h3>
+      <div class="quick">
+        <div class="opt"><b>Importa el historial de tu bróker</b><span class="small muted">MT4, MT5, cTrader, TradingView… Todas tus operaciones de golpe, sin duplicados.</span><button type="button" class="btn primary" data-goto-import>Importar historial</button></div>
+        <div class="opt"><b>Arrastra o pega una captura</b><span class="small muted">Suéltala en el recuadro de abajo o pulsa Ctrl+V. La IA rellena la operación sola; tú solo guardas.</span></div>
+        <div class="opt"><b>Lo demás se rellena solo</b><span class="small muted">La sesión sale de la hora y el sesgo diario del briefing de ese día. Emoción, plan y errores son opcionales.</span></div>
+      </div>
+    </div>
     <form class="panel" id="t-form">
       <input type="hidden" id="t-id">
       <div class="panel-head"><h3 id="t-form-title">Añadir operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
-      <div class="field" id="t-shot-wrap"><span><b>1. Sube las imágenes de la operación</b> (antes de entrar, durante, resultado; puedes subir varias). La IA las mira y rellena el formulario por ti.</span>
-        <div class="row"><input type="file" id="t-shot" accept="image/png,image/jpeg,image/webp" multiple style="flex:1;min-width:0">
-          <button type="button" class="btn primary" id="t-ai" data-ai>Analizar con IA y rellenar</button></div>
+      <div class="field" id="t-shot-wrap">
+        <label class="drop" id="t-drop" for="t-shot"><b>Arrastra aquí las capturas de la operación, pégalas con Ctrl+V o pulsa para elegirlas</b>
+          <span class="small muted">Antes de entrar, durante y el resultado. La IA las analiza al momento y rellena el formulario.</span>
+          <input type="file" id="t-shot" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+        <div class="row"><button type="button" class="btn" id="t-ai" data-ai>Volver a analizar con IA</button></div>
         <div class="thumbs" id="t-thumbs"></div>
         <div id="t-ai-out" class="ai-out small"></div>
       </div>
@@ -364,10 +378,22 @@ details summary{cursor:pointer;font-weight:600}
       <div class="tablebox" style="max-height:620px"><table id="o-table"></table></div>
     </div>
     <div class="grid g2">
-      <div class="panel">
-        <h3>Importar CSV</h3>
-        <p class="muted small" style="margin:0">Si ya llevas un journal en Excel o en tu plataforma, expórtalo a CSV. Columnas mínimas: <span class="mono">date, pair, direction</span> y precios (<span class="mono">entry, stop_loss, take_profit, exit_price</span>) o <span class="mono">r</span>. También vale en español: fecha, par, dirección, entrada, sl, tp, salida, confluencias, sesgo, errores, notas.</p>
-        <input type="file" id="csv-file" accept=".csv,text/csv">
+      <div class="panel" id="imp-panel">
+        <h3>Importar historial del bróker</h3>
+        <details class="small"><summary>Cómo exportarlo</summary>
+          <ul class="clean" style="margin-top:6px">
+            <li><b>MetaTrader 5:</b> pestaña Historial → clic derecho → «Posiciones» → clic derecho → «Informe» → guardar como Excel o HTML.</li>
+            <li><b>MetaTrader 4:</b> pestaña Historial de cuenta → clic derecho → «Todo el historial» → «Guardar como informe detallado».</li>
+            <li><b>cTrader / TradingView / otros:</b> exporta el historial de operaciones en CSV o Excel.</li>
+            <li>También vale tu propio journal en CSV con columnas fecha, par, dirección, entrada, sl, tp, salida.</li>
+          </ul></details>
+        <div class="grid g2">
+          <label class="field">Riesgo por operación en tu moneda (opcional)<input id="imp-risk" inputmode="decimal" placeholder="100"></label>
+          <label class="field">Hora del bróker<select id="imp-tz">
+            <option value="ny7">Hora de servidor estándar (GMT+2 / +3)</option><option value="madrid">Hora de España</option><option value="utc">UTC</option></select></label>
+        </div>
+        <p class="small muted" style="margin:0">Con el riesgo por operación calculo el R a partir del beneficio, que es más fiable si movías el stop. Si lo dejas vacío, uso el stop del informe.</p>
+        <input type="file" id="csv-file" accept=".csv,.txt,.htm,.html,.xlsx,.xls">
         <div id="csv-msg" class="small"></div>
       </div>
       <div class="panel">
@@ -456,6 +482,7 @@ details summary{cursor:pointer;font-weight:600}
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 "use strict";
 // =====================================================================
@@ -542,6 +569,7 @@ function normalize(raw) {
   t.ejemplo = !!raw.ejemplo;
   t.shots = [...new Set([...(Array.isArray(raw.shots) ? raw.shots : tags(raw.shots)), ...(raw.shot ? [String(raw.shot)] : [])].map(String).filter(Boolean))];
   t.ai_analysis = raw.ai_analysis ? String(raw.ai_analysis) : "";
+  t.ext_id = raw.ext_id ? String(raw.ext_id) : "";
   return t;
 }
 // Campos derivados para el análisis
@@ -692,7 +720,7 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
 let col = null;
 
 async function boot() {
@@ -964,7 +992,7 @@ function fillForm(t) {
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
   set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
   set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
-  state.formShots = [...(t.shots || [])]; state.formAI = t.ai_analysis || ""; $("#t-shot").value = "";
+  state.formShots = [...(t.shots || [])]; state.pendingFiles = []; state.formAI = t.ai_analysis || ""; state.autoSession = state.autoBias = false;
   $("#t-ai-out").innerHTML = state.formAI ? "<b>Análisis de la IA:</b> " + mdLite(state.formAI) : ""; renderThumbs();
   renderForm();
 }
@@ -972,7 +1000,7 @@ function resetForm() {
   $("#t-form").reset(); $("#t-id").value = ""; state.editing = null; $("#t-date").value = todayISO();
   $("#t-form-title").textContent = "Añadir operación"; $("#t-cancel").hidden = true; $("#t-save").textContent = "Guardar operación";
   document.querySelectorAll("#t-confs .chip,#t-mistakes .chip").forEach(c => c.setAttribute("aria-pressed", "false"));
-  state.formShots = []; state.formAI = ""; $("#t-ai-out").innerHTML = ""; renderThumbs();
+  state.formShots = []; state.pendingFiles = []; state.formAI = ""; $("#t-ai-out").innerHTML = ""; state.autoSession = state.autoBias = true; renderThumbs(); autoFill();
 }
 $("#t-cancel").addEventListener("click", resetForm);
 $("#t-form").addEventListener("submit", async e => {
@@ -987,7 +1015,7 @@ $("#t-form").addEventListener("submit", async e => {
     confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
   $("#t-save").disabled = true;
   try {
-    const files = [...$("#t-shot").files];
+    const files = [...state.pendingFiles];
     if (files.length && state.assets) {
       let k = 0;
       for (const f of files) {
@@ -1024,17 +1052,193 @@ function parseCSV(text) {
   const head = rows.shift().map(h => { const k = h.trim().toLowerCase(); return ALIASES[k] || k; });
   return rows.filter(r => r.some(c => c.trim())).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
+// =====================================================================
+// Campos automáticos: sesión por la hora y sesgo del briefing del día
+// =====================================================================
+function sessionFromMadridHour(h) {
+  if (h == null || Number.isNaN(h)) return "";
+  if (h >= 1 && h < 9) return "Asia";
+  if (h >= 9 && h < 14) return "Londres";
+  if (h >= 14 && h < 17) return "Overlap Londres-NY";
+  if (h >= 17 && h < 22) return "Nueva York";
+  return "Fuera de sesión";
+}
+function biasFromBriefing(date, pair) {
+  const b = state.briefings.find(x => x.date === date);
+  const p = b?.pairs?.[pair]?.prob_up;
+  if (p == null) return "";
+  return p >= 0.55 ? "Alcista" : p <= 0.45 ? "Bajista" : "Neutral";
+}
+state.autoSession = state.autoBias = true;
+function autoFill() {
+  const tv = $("#t-time").value;
+  if (state.autoSession && tv) { const s = sessionFromMadridHour(+tv.slice(0, 2)); if (s) $("#t-session").value = s; }
+  if (state.autoBias) { const b = biasFromBriefing($("#t-date").value, $("#t-pair").value); if (b) $("#t-bias").value = b; }
+}
+["#t-time", "#t-date", "#t-pair"].forEach(id => $(id).addEventListener("change", autoFill));
+$("#t-session").addEventListener("change", () => { state.autoSession = false; });
+$("#t-bias").addEventListener("change", () => { state.autoBias = false; });
+document.addEventListener("click", e => { if (e.target.closest("[data-goto-import]")) $("#imp-panel").scrollIntoView({behavior: "smooth"}); });
+
+// =====================================================================
+// Importador de historial (MT4, MT5, cTrader, TradingView, CSV propio)
+// =====================================================================
+const madridFmt = new Intl.DateTimeFormat("sv-SE", {timeZone: "Europe/Madrid", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+// Convierte "2026.09.30 14:05:11" (o variantes) en {date, time} de Madrid según la zona del bróker
+function brokerTime(raw, tz) {
+  if (raw == null || raw === "") return null;
+  let ms;
+  if (typeof raw === "number") ms = raw > 1e11 ? raw : raw > 1e9 ? raw * 1000 : Math.round((raw - 25569) * 864e5); // unix o fecha de Excel
+  else {
+    const m = String(raw).trim().match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+      || String(raw).trim().match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!m) { const d = Date.parse(raw); if (Number.isNaN(d)) return null; ms = d; }
+    else {
+      const [Y, M, D] = m[1].length === 4 ? [+m[1], +m[2], +m[3]] : [+m[3], +m[2], +m[1]];
+      ms = Date.UTC(Y, M - 1, D, +m[4], +m[5], +(m[6] || 0)); // hora "de pared" del bróker tratada como UTC
+    }
+  }
+  if (typeof raw !== "number" || raw < 1e9) {
+    if (tz === "ny7") { let u = ms - 3 * 3.6e6; u = ms - (nyOffsetMin(u) + 420) * 6e4; ms = ms - (nyOffsetMin(u) + 420) * 6e4; }
+    else if (tz === "madrid") { let u = ms - 2 * 3.6e6; const off = Math.round((Date.parse(madridFmt.format(new Date(u)).replace(" ", "T") + ":00Z") - u) / 6e4); ms -= off * 6e4; }
+  }
+  const s = madridFmt.format(new Date(ms)); // "2026-09-30 14:05"
+  return {date: s.slice(0, 10), time: s.slice(11, 16)};
+}
+// Lee el archivo como filas (arrays) sea CSV, HTML o Excel
+async function fileRows(file) {
+  const name = file.name.toLowerCase();
+  if (/\.(xlsx|xls)$/.test(name)) {
+    if (!window.XLSX) throw new Error("No se pudo cargar el lector de Excel. Exporta el informe como HTML o CSV.");
+    const wb = XLSX.read(await file.arrayBuffer(), {type: "array"});
+    return wb.SheetNames.flatMap(n => XLSX.utils.sheet_to_json(wb.Sheets[n], {header: 1, raw: true, defval: ""}));
+  }
+  const text = await file.text();
+  if (/\.html?$/.test(name) || /^\s*<(!doctype|html|table)/i.test(text)) {
+    const doc = new DOMParser().parseFromString(text, "text/html");
+    return [...doc.querySelectorAll("tr")].map(tr => [...tr.children].flatMap(td => Array(+td.getAttribute("colspan") || 1).fill(td.textContent.trim())));
+  }
+  const sep = (text.split("\n")[0].match(/;/g) || []).length > (text.split("\n")[0].match(/,/g) || []).length ? ";" : (text.split("\n")[0].includes("\t") ? "\t" : ",");
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true; else if (ch === sep) { row.push(cell.trim()); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell.trim()); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell.trim()); rows.push(row); }
+  return rows;
+}
+// Detecta la fila de cabecera y a qué columna corresponde cada campo
+const HDR = {
+  id: /^(ticket|order|orden|position|posici[oó]n|deal|id|n[º°o]\.?)$/i,
+  open_time: /(open.?time|time.?open|apertura|fecha.?apertura|entry.?time|^time$|^hora$|^fecha$|^date$|opened|creation)/i,
+  close_time: /(close.?time|time.?close|cierre|fecha.?cierre|exit.?time|closed|^time$)/i,
+  symbol: /(symbol|s[ií]mbolo|item|instrument|instrumento|^par$|^pair$|market|mercado)/i,
+  type: /(^type$|^tipo$|direction|direcci[oó]n|side|lado|buy.?sell|operation)/i,
+  entry: /(open.?price|price.?open|entry|entrada|precio.?apertura|^price$|^precio$)/i,
+  exit: /(close.?price|price.?close|exit|salida|precio.?cierre|^price$|^precio$)/i,
+  sl: /^(s\s*\/\s*l|sl|stop.?loss|stop)$/i,
+  tp: /^(t\s*\/\s*p|tp|take.?profit|objetivo)$/i,
+  profit: /(^profit$|beneficio|ganancia|p\/?l|resultado.?neto|net|pnl|^resultado$)/i,
+  volume: /(volume|volumen|size|lots?|lotes|cantidad|quantity)/i,
+};
+function findHeader(rows) {
+  let best = -1, score = 0;
+  rows.slice(0, 80).forEach((r, i) => {
+    const sc = ["symbol", "type", "profit", "open_time"].filter(k => r.some(c => HDR[k].test(String(c).trim()))).length + (r.some(c => /price|precio/i.test(c)) ? 1 : 0);
+    if (sc > score) { score = sc; best = i; }
+  });
+  return score >= 3 ? best : -1;
+}
+function mapColumns(head) {
+  const h = head.map(c => String(c).trim()), map = {};
+  const all = (re) => h.map((c, i) => re.test(c) ? i : -1).filter(i => i >= 0);
+  map.id = all(HDR.id)[0];
+  map.symbol = all(HDR.symbol)[0];
+  map.type = all(HDR.type)[0];
+  map.sl = all(HDR.sl)[0]; map.tp = all(HDR.tp)[0];
+  map.profit = all(HDR.profit).pop();
+  map.volume = all(HDR.volume)[0];
+  // MT4/MT5 repiten "Time" y "Price": la primera es apertura y la segunda cierre
+  const times = all(/(time|hora|fecha|date)/i), prices = all(/(price|precio)/i);
+  map.open_time = all(/(open.?time|apertura)/i)[0] ?? times[0];
+  map.close_time = all(/(close.?time|cierre)/i).find(i => /time|fecha|hora/i.test(h[i])) ?? times.find(i => i !== map.open_time);
+  map.entry = all(/(open.?price|entry|entrada|precio.?apertura)/i)[0] ?? prices[0];
+  map.exit = all(/(close.?price|exit|salida|precio.?cierre)/i)[0] ?? prices.find(i => i !== map.entry);
+  return map;
+}
+async function aiMapColumns(head, sample) {
+  if (!state.sample) return null;
+  try {
+    const m = await state.sample.json(`Este es el historial de operaciones exportado de una plataforma de trading. Cabecera (índice: nombre): ${head.map((c, i) => `${i}: ${c}`).join(" | ")}
+Filas de ejemplo: ${JSON.stringify(sample)}
+Responde SOLO con un JSON que diga el índice de columna (número, o null si no existe) de cada campo: {"id":..,"symbol":..,"type":..,"open_time":..,"close_time":..,"entry":..,"exit":..,"sl":..,"tp":..,"profit":..,"volume":..}. "type" es la columna que dice buy/sell (compra/venta).`, {modelTier: "quick"});
+    return m && typeof m === "object" ? m : null;
+  } catch { return null; }
+}
+const numCell = v => { if (typeof v === "number") return v; const s = String(v ?? "").replace(/\s/g, "").replace(/[^\d,.\-]/g, ""); if (!s) return null; const t = /,\d{1,2}$/.test(s) && !/\.\d/.test(s) ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, ""); const n = Number(t); return Number.isFinite(n) ? n : null; };
+function pairOf(sym) {
+  const s = String(sym || "").toUpperCase().replace(/[^A-Z]/g, "");
+  if (s.includes("EURUSD")) return "EURUSD";
+  if (/^(DXY|USDX|DX|USDOLLAR|DOLLARINDEX)/.test(s) || s.includes("DXY") || s.includes("USDX")) return "DXY";
+  return null;
+}
+async function importBroker(file) {
+  const msg = $("#csv-msg");
+  msg.textContent = "Leyendo el archivo…";
+  const rows = (await fileRows(file)).filter(r => r.some(c => String(c).trim() !== ""));
+  // ¿Es un journal propio con nuestras columnas? Entonces se importa tal cual
+  const own = rows.length && ["date", "fecha"].some(k => rows[0].map(c => String(c).trim().toLowerCase()).includes(k)) && ["pair", "par"].some(k => rows[0].map(c => String(c).trim().toLowerCase()).includes(k));
+  if (own) {
+    const head = rows[0].map(h => { const k = String(h).trim().toLowerCase(); return ALIASES[k] || k; });
+    let n = 0;
+    for (const r of rows.slice(1)) { await saveTrade(Object.fromEntries(head.map((h, i) => [h, r[i]]))); n++; if (n % 10 === 0) msg.textContent = `Importando… ${n}/${rows.length - 1}`; }
+    msg.innerHTML = `<span class="pos">${n} operaciones importadas de tu journal.</span>`; return;
+  }
+  const hi = findHeader(rows);
+  if (hi < 0) throw new Error("No encuentro la tabla de operaciones en el archivo. Exporta el historial de «Posiciones» u «Operaciones».");
+  const head = rows[hi];
+  let map = mapColumns(head);
+  if ([map.symbol, map.type, map.entry, map.exit].some(v => v == null)) {
+    msg.textContent = "Formato desconocido: la IA está identificando las columnas…";
+    map = {...map, ...(await aiMapColumns(head, rows.slice(hi + 1, hi + 4)) || {})};
+  }
+  if ([map.symbol, map.type, map.entry].some(v => v == null)) throw new Error("No reconozco las columnas de símbolo, tipo y precio de este informe.");
+  const tz = $("#imp-tz").value, risk = num($("#imp-risk").value);
+  const have = new Set(state.trades.map(t => t.ext_id).filter(Boolean));
+  const cands = [];
+  for (const r of rows.slice(hi + 1)) {
+    if (r.length < 4) continue;
+    if (findHeader([r]) === 0) break; // empieza otra tabla (órdenes, depósitos…)
+    const pair = pairOf(r[map.symbol]); if (!pair) continue;
+    const type = String(r[map.type] || "").toLowerCase();
+    if (!/(buy|sell|compra|venta|long|short)/.test(type) || /(limit|stop)\s*$/.test(type) && !/\d/.test(String(r[map.exit] ?? ""))) continue;
+    const entry = numCell(r[map.entry]), exit = numCell(r[map.exit]);
+    if (entry == null || exit == null) continue;
+    const ot = brokerTime(r[map.open_time], tz) || brokerTime(r[map.close_time], tz);
+    if (!ot) continue;
+    const sl = map.sl != null ? numCell(r[map.sl]) : null, tp = map.tp != null ? numCell(r[map.tp]) : null, profit = map.profit != null ? numCell(r[map.profit]) : null;
+    const ext = `${pair}-${map.id != null && r[map.id] ? r[map.id] : ot.date + ot.time + entry}`;
+    if (have.has(ext)) continue;
+    have.add(ext);
+    const direction = /(buy|compra|long)/.test(type) ? "Long" : "Short";
+    let rMult = risk && profit != null ? Math.round(profit / risk * 100) / 100 : null;
+    if (rMult == null && !(sl && sl > 0)) rMult = profit != null ? (profit > 0 ? 1 : profit < 0 ? -1 : 0) : null;
+    cands.push({date: ot.date, time: ot.time, pair, direction, entry, exit_price: exit, stop_loss: sl && sl > 0 ? sl : null, take_profit: tp && tp > 0 ? tp : null,
+      pnl: profit, r: rMult, session: sessionFromMadridHour(+ot.time.slice(0, 2)), daily_bias: biasFromBriefing(ot.date, pair), ext_id: ext,
+      notes: `Importada de ${file.name}${map.volume != null && r[map.volume] ? ` · volumen ${r[map.volume]}` : ""}${rMult != null && !risk && !(sl > 0) ? " · R aproximado (sin stop en el informe)" : ""}`});
+  }
+  if (!cands.length) { msg.innerHTML = `<span class="neg">No he encontrado operaciones nuevas de EURUSD o DXY en el archivo${have.size ? " (puede que ya estuvieran importadas)" : ""}.</span>`; return; }
+  let n = 0;
+  for (const c of cands) { await saveTrade(c); n++; if (n % 5 === 0) msg.textContent = `Importando… ${n}/${cands.length}`; }
+  msg.innerHTML = `<span class="pos">${n} operaciones importadas.</span> Ya cuentan en tu win rate y en el análisis. Si quieres, añade después capturas o confluencias desde «Editar» (no es obligatorio).`;
+}
 $("#csv-file").addEventListener("change", async e => {
   const file = e.target.files[0]; if (!file) return;
-  const msg = $("#csv-msg");
-  try {
-    const rows = parseCSV(await file.text());
-    const miss = ["date", "pair", "direction"].filter(k => !(k in (rows[0] || {})));
-    if (miss.length) { msg.innerHTML = `<span class="neg">Faltan columnas: ${miss.join(", ")}.</span>`; return; }
-    let n = 0;
-    for (const r of rows) { await saveTrade(r); n++; if (n % 10 === 0) msg.textContent = `Importando… ${n}/${rows.length}`; }
-    msg.innerHTML = `<span class="pos">${n} operaciones importadas.</span>`;
-  } catch (err) { msg.innerHTML = `<span class="neg">No se pudo importar: ${esc(err.message || err.code)}</span>`; }
+  try { await importBroker(file); }
+  catch (err) { $("#csv-msg").innerHTML = `<span class="neg">No se pudo importar: ${esc(err.message || err.code)}</span>`; }
   e.target.value = "";
 });
 $("#csv-export").addEventListener("click", async () => {
@@ -1378,12 +1582,30 @@ $("#o-table").addEventListener("click", async e => {
 // =====================================================================
 function renderThumbs() {
   const box = $("#t-thumbs"); if (!box) return;
-  const files = [...($("#t-shot")?.files || [])];
+  const files = state.pendingFiles;
   box.innerHTML = state.formShots.map(id => `<span class="thumb"><a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen guardada"></a><button type="button" data-unshot="${esc(id)}" aria-label="Quitar imagen">×</button></span>`).join("")
-    + files.map(f => `<span class="thumb"><img src="${URL.createObjectURL(f)}" alt="${esc(f.name)}"><span class="tag">nueva</span></span>`).join("");
+    + files.map((f, i) => `<span class="thumb"><img src="${URL.createObjectURL(f)}" alt="${esc(f.name || "captura")}"><span class="tag">nueva</span><button type="button" data-unfile="${i}" aria-label="Quitar imagen">×</button></span>`).join("");
 }
-$("#t-shot").addEventListener("change", renderThumbs);
-$("#t-thumbs").addEventListener("click", e => { const b = e.target.closest("[data-unshot]"); if (b) { state.formShots = state.formShots.filter(x => x !== b.dataset.unshot); renderThumbs(); } });
+function addImages(list) {
+  const imgs = [...list].filter(f => /^image\/(png|jpeg|webp)$/.test(f.type));
+  if (!imgs.length) return;
+  state.pendingFiles.push(...imgs); renderThumbs();
+  if (state.sample && state.imgLimit) runImageAnalysis();
+}
+$("#t-shot").addEventListener("change", e => { addImages(e.target.files); e.target.value = ""; });
+const drop = $("#t-drop");
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => addImages(e.dataTransfer.files));
+document.addEventListener("paste", e => {
+  if (activeTab() !== "operaciones" || $("#t-shot-wrap").hidden) return;
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.some(f => f.type.startsWith("image/"))) { e.preventDefault(); addImages(files); }
+});
+$("#t-thumbs").addEventListener("click", e => {
+  const b = e.target.closest("[data-unshot]"); if (b) { state.formShots = state.formShots.filter(x => x !== b.dataset.unshot); renderThumbs(); }
+  const f = e.target.closest("[data-unfile]"); if (f) { state.pendingFiles.splice(+f.dataset.unfile, 1); renderThumbs(); }
+});
 
 function analysisPrompt(extra) {
   const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
@@ -1399,7 +1621,7 @@ Sesiones válidas: ${SESSIONS.join(" | ")}
 Estructura actual del mercado por temporalidades (calculada con velas reales): ${mtfText("EURUSD") || "no disponible"}
 
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
-{"pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
+{"date":"AAAA-MM-DD si se ve en el eje del gráfico, o null","time":"HH:MM de la vela de entrada si se ve, o null","pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null",
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null (solo si se ve un indicador de volumen en la imagen)",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
@@ -1408,10 +1630,13 @@ Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no 
 function applyAnalysis(a) {
   const setIf = (id, v) => { if (v != null && v !== "" && !$(id).value) $(id).value = v; };
   const setSel = (id, v, ok) => { if (v && ok.includes(v)) $(id).value = v; };
+  if (a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) && $("#t-date").value === todayISO()) $("#t-date").value = a.date;
+  if (a.time && /^\d{1,2}:\d{2}$/.test(a.time) && !$("#t-time").value) $("#t-time").value = a.time.padStart(5, "0");
   setSel("#t-pair", a.pair, ["EURUSD", "DXY"]); setSel("#t-dir", a.direction, ["Long", "Short"]);
   setSel("#t-tf", a.timeframe, ["M1", "M5", "M15", "M30", "H1", "H4"]); if (!$("#t-vol").value) setSel("#t-vol", a.volume, ["Alto", "Normal", "Bajo"]); setSel("#t-session", a.session, SESSIONS);
   for (const k of [["#t-entry", "entry"], ["#t-sl", "stop_loss"], ["#t-tp", "take_profit"], ["#t-exit", "exit_price"]]) setIf(k[0], num(a[k[1]]));
   setIf("#t-setup", a.setup);
+  autoFill();
   const chips = [...document.querySelectorAll("#t-confs .chip")], extra = [];
   for (const c of (Array.isArray(a.confluences) ? a.confluences : [])) {
     const chip = chips.find(x => x.textContent.toLowerCase() === String(c).toLowerCase());
@@ -1422,9 +1647,10 @@ function applyAnalysis(a) {
   state.formAI = [a.analisis, a.estrategia].filter(Boolean).join("\n\n");
 }
 let shotCtl;
-$("#t-ai").addEventListener("click", async () => {
+$("#t-ai").addEventListener("click", () => runImageAnalysis());
+async function runImageAnalysis() {
   const out = $("#t-ai-out");
-  const files = [...$("#t-shot").files];
+  const files = [...state.pendingFiles];
   if (!files.length && !state.formShots.length) { out.innerHTML = `<span class="neg">Primero elige una o varias imágenes de la operación.</span>`; return; }
   const btn = $("#t-ai"); btn.disabled = true;
   out.innerHTML = `<span class="muted">Mirando el gráfico… (puede tardar hasta un minuto)</span>`;
@@ -1435,11 +1661,12 @@ $("#t-ai").addEventListener("click", async () => {
     const a = await state.sample.json(analysisPrompt(), {images: blobs.slice(0, state.imgLimit), modelTier: "complex", signal: shotCtl.signal});
     if (!a || typeof a !== "object") throw {code: "invalid_json"};
     applyAnalysis(a);
-    out.innerHTML = `<b>Análisis de la IA</b> (he rellenado lo que se ve en la imagen; revísalo antes de guardar):\n` + mdLite(state.formAI);
+    out.innerHTML = `<b>Listo.</b> He rellenado lo que se ve en la imagen: revísalo y pulsa «Guardar operación».\n` + mdLite(state.formAI);
+    $("#t-save").scrollIntoView({behavior: "smooth", block: "center"});
   } catch (e) {
     out.innerHTML = `<span class="neg">${esc(e.code === "invalid_json" ? "No pude leer bien la imagen. Prueba con una captura más nítida." : AI_ERR[e.code] || "No se pudo analizar: " + (e.message || e.code))}</span>`;
   } finally { btn.disabled = false; }
-});
+}
 // Analizar una operación ya guardada a partir de sus imágenes
 $("#o-table").addEventListener("click", async e => {
   const b = e.target.closest("[data-analyze]"); if (!b) return;
