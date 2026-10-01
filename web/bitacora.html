@@ -139,6 +139,7 @@ details summary{cursor:pointer;font-weight:600}
       <button role="tab" data-tab="estrategia" aria-selected="false">Mi estrategia</button>
       <button role="tab" data-tab="journal" aria-selected="false">Win rate</button>
       <button role="tab" data-tab="analisis" aria-selected="false">Buenas vs malas</button>
+      <button role="tab" data-tab="comportamiento" aria-selected="false">Comportamiento</button>
       <button role="tab" data-tab="filtros" aria-selected="false">Filtros</button>
       <button role="tab" data-tab="coach" aria-selected="false">Coach IA</button>
     </nav>
@@ -294,6 +295,22 @@ details summary{cursor:pointer;font-weight:600}
         <select id="a-only" style="width:auto"><option value="Loss">Perdedoras</option><option value="Win">Ganadoras</option><option value="">Todas</option></select></div>
       <div class="tablebox" style="max-height:520px"><table id="a-trades"></table></div>
     </div>
+  </section>
+
+  <!-- ====================== COMPORTAMIENTO ====================== -->
+  <section class="view" id="view-comportamiento" hidden>
+    <div class="panel-head">
+      <div><div class="label">Detectado en tus operaciones</div><h2>Patrones de comportamiento</h2></div>
+      <div class="chips" id="b-summary"></div>
+    </div>
+    <div id="b-empty" class="banner info" hidden></div>
+    <div class="panel">
+      <div class="panel-head"><h3>Informe de la IA sobre tu psicología como trader</h3><span class="muted small" id="b-ai-date"></span></div>
+      <p class="muted small" style="margin:0">Revancha, exceso de confianza, miedo, sobreoperar, disciplina… La IA lee tus operaciones en orden y te dice qué te dispara y cómo corregirlo.</p>
+      <div class="row"><button class="btn primary" id="b-ai" data-ai>Analizar mi comportamiento</button><button class="btn" id="b-stop" hidden>Parar</button></div>
+      <div id="b-ai-out" class="ai-out"></div>
+    </div>
+    <div class="grid g2" id="b-cards"></div>
   </section>
 
   <!-- ====================== FILTROS ====================== -->
@@ -752,6 +769,7 @@ async function boot() {
     state.pending = snap.docs.filter(d => d.data()?.kind === "pending_shots").length; renderPending();
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
+    const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
     state.loaded = true;
@@ -805,6 +823,7 @@ function renderAll() {
   const tab = activeTab();
   if (tab === "journal") renderJournal();
   if (tab === "analisis") renderAnalysis();
+  if (tab === "comportamiento") renderBehavior();
   if (tab === "filtros") renderFilters();
   if (tab === "operaciones") { renderForm(); renderOps(); }
   if (tab === "estrategia") renderStrategy();
@@ -2000,6 +2019,182 @@ Responde SOLO con un objeto JSON con esta forma (todo en español; en confluenci
 }
 $("#s-stop").addEventListener("click", () => stratCtl?.abort());
 const stratTxt = () => state.profile ? `\nESTRATEGIA DETECTADA DEL TRADER: ${JSON.stringify({nombre: state.profile.nombre, resumen: state.profile.resumen, confluencias_clave: state.profile.confluencias_clave, sesiones: state.profile.sesiones, setups: state.profile.setups, checklist: state.profile.checklist})}\n` : "";
+
+// =====================================================================
+// Patrones de comportamiento
+// =====================================================================
+function behaviorPatterns(all) {
+  const ts = [...all].filter(t => t.win || t.loss || t.result === "BE").sort((a, b) => (a.date + (a.time || "00:00")).localeCompare(b.date + (b.time || "00:00")));
+  const P = [], base = groupStats(ts), MIN = 3;
+  const g = (label, arr) => ({label, ...groupStats(arr)});
+  const worse = (a, b) => a.n >= MIN && b.n >= MIN && ((a.exp ?? 0) < (b.exp ?? 0) - 0.3 || (a.wr ?? 0) < (b.wr ?? 0) - 15);
+  const better = (a, b) => a.n >= MIN && b.n >= MIN && ((a.exp ?? 0) > (b.exp ?? 0) + 0.3 || (a.wr ?? 0) > (b.wr ?? 0) + 15);
+  const mins = t => t.time ? Date.parse(t.date + "T" + t.time + ":00Z") / 6e4 : null;
+  const byDay = {}; ts.forEach(t => (byDay[t.date] ||= []).push(t));
+
+  // 1. Después de una pérdida (mismo día)
+  const afterLoss = [], afterWin = [], firstOfDay = [], quickAfterLoss = [];
+  for (const d of Object.values(byDay)) d.forEach((t, i) => {
+    if (i === 0) { firstOfDay.push(t); return; }
+    const prev = d[i - 1];
+    (prev.loss ? afterLoss : prev.win ? afterWin : []).push(t);
+    if (prev.loss && mins(t) != null && mins(prev) != null && mins(t) - mins(prev) <= 30) quickAfterLoss.push(t);
+  });
+  if (afterLoss.length) {
+    const a = g("Justo después de una pérdida", afterLoss), b = g("Primera operación del día", firstOfDay), c = g("Justo después de una ganancia", afterWin);
+    const bad = worse(a, base) || worse(a, b);
+    P.push({title: "Después de una pérdida", level: bad ? "alerta" : afterLoss.length < MIN ? "info" : "bien", rows: [b, c, a],
+      text: bad ? `Cuando vuelves a entrar el mismo día tras perder, tu expectativa cae a ${fmtR(a.exp)} (WR ${fmtP(a.wr)}). Es el patrón típico de revenge trading.` : `Tras una pérdida mantienes un rendimiento parecido a tu media (${fmtR(a.exp)} por operación).`,
+      tip: bad ? "Regla: después de una pérdida, pausa obligatoria de 1 hora o se acabó el día." : "Bien: no se aprecia revancha. Sigue así."});
+  }
+  if (quickAfterLoss.length) {
+    const q = g("Entradas a menos de 30 min de una pérdida", quickAfterLoss);
+    P.push({title: "Entradas impulsivas tras perder", level: (q.exp ?? 0) < 0 ? "alerta" : "atencion", rows: [q],
+      text: `${quickAfterLoss.length} veces volviste a entrar menos de 30 minutos después de una pérdida. Resultado: ${fmtR(q.totalR)} en total.`,
+      tip: "Pon un temporizador: nada de operar en los 30 minutos siguientes a un stop."});
+  }
+  // 2. Rachas
+  const afterLL = [], afterWW = [];
+  ts.forEach((t, i) => { if (i >= 2) { if (ts[i - 1].loss && ts[i - 2].loss) afterLL.push(t); if (ts[i - 1].win && ts[i - 2].win) afterWW.push(t); } });
+  if (afterLL.length || afterWW.length) {
+    const a = g("Tras 2+ pérdidas seguidas", afterLL), b = g("Tras 2+ ganancias seguidas", afterWW);
+    const lvl = worse(a, base) || worse(b, base) ? "alerta" : (a.n < MIN && b.n < MIN) ? "info" : "bien";
+    P.push({title: "Rachas", level: lvl, rows: [g("Media general", ts), a, b],
+      text: worse(b, base) ? `Después de dos ganancias seguidas tu expectativa baja a ${fmtR(b.exp)}: exceso de confianza.` : worse(a, base) ? `Después de dos pérdidas seguidas rindes peor (${fmtR(a.exp)}): operas con el ánimo tocado.` : "Tus rachas no cambian mucho tu forma de operar.",
+      tip: worse(b, base) ? "Tras dos ganancias, baja el riesgo a la mitad en la siguiente." : worse(a, base) ? "Tras dos pérdidas seguidas, cierra el día y revisa." : "Mantén el mismo riesgo en rachas buenas y malas."});
+  }
+  // 3. Sobreoperar
+  const nth = [[], [], []];
+  Object.values(byDay).forEach(d => d.forEach((t, i) => nth[Math.min(i, 2)].push(t)));
+  if (nth[1].length) {
+    const rows = [g("1.ª operación del día", nth[0]), g("2.ª operación del día", nth[1]), g("3.ª o más", nth[2])];
+    const busy = Object.values(byDay).filter(d => d.length >= 3), calm = Object.values(byDay).filter(d => d.length < 3);
+    const bad = worse(rows[2], rows[0]) || worse(rows[1], rows[0]);
+    P.push({title: "Número de operaciones al día", level: bad ? "alerta" : "bien", rows,
+      text: (bad ? `Tu mejor operación es la primera del día (${fmtR(rows[0].exp)}); a partir de ahí empeoras.` : "Tu rendimiento no cae al hacer varias operaciones en el día.") + (busy.length ? ` En los ${busy.length} días con 3 o más operaciones sumaste ${fmtR(busy.flat().reduce((s, t) => s + (t.r || 0), 0))}, frente a ${fmtR(calm.flat().reduce((s, t) => s + (t.r || 0), 0))} en el resto.` : ""),
+      tip: bad ? "Límite: máximo 2 operaciones al día." : "Puedes mantener tu frecuencia actual."});
+  }
+  // 4. Cortar ganancias / dejar correr pérdidas
+  const winsRR = ts.filter(t => t.win && t.rr && t.r != null);
+  if (winsRR.length >= MIN) {
+    const ratios = winsRR.map(t => t.r / t.rr), early = winsRR.filter(t => t.r / t.rr < 0.8);
+    const avg = mean(ratios);
+    P.push({title: "Cierre de ganadoras", level: early.length / winsRR.length > 0.4 ? "atencion" : "bien", rows: [g("Ganadoras cerradas antes del 80% del objetivo", early), g("Ganadoras que llegaron a objetivo", winsRR.filter(t => t.r / t.rr >= 0.8))],
+      text: `De media te llevas el ${(avg * 100).toFixed(0)}% del recorrido que planeabas. ${early.length} de ${winsRR.length} ganadoras se cerraron antes del 80% del objetivo.`,
+      tip: early.length / winsRR.length > 0.4 ? "Deja trabajar el TP o usa parciales con reglas fijas, no por miedo." : "Bien: respetas tus objetivos."});
+  }
+  const bigLoss = ts.filter(t => t.loss && t.r != null && t.r < -1.1);
+  const losses = ts.filter(t => t.loss && t.r != null);
+  if (losses.length >= MIN) {
+    const extra = bigLoss.reduce((s, t) => s + (t.r + 1), 0);
+    P.push({title: "Pérdidas mayores de 1R", level: bigLoss.length ? "alerta" : "bien", rows: [g("Pérdidas de más de 1,1R", bigLoss), g("Pérdidas controladas", losses.filter(t => t.r >= -1.1))],
+      text: bigLoss.length ? `${bigLoss.length} pérdidas fueron más allá del stop inicial (peor: ${fmtR(Math.min(...bigLoss.map(t => t.r)))}). Te costaron ${fmtR(extra)} de más.` : "Todas tus pérdidas se quedan en 1R o menos: respetas el stop.",
+      tip: bigLoss.length ? "Nunca muevas el stop en contra. Si lo mueves, que sea solo a favor." : "Sigue respetando el stop."});
+  }
+  // 5. Emoción y plan
+  const emo = breakdown(ts, "emotion", MIN);
+  if (emo.length >= 2) {
+    const best = emo[0], worst = emo[emo.length - 1];
+    P.push({title: "Emociones", level: (worst.exp ?? 0) < 0 && NEG_EMO.has(worst.key) ? "alerta" : "info", rows: emo.map(r => ({...r, label: r.key})),
+      text: `Rindes mejor cuando entras «${best.key}» (${fmtR(best.exp)}) y peor cuando entras «${worst.key}» (${fmtR(worst.exp)}).`,
+      tip: NEG_EMO.has(worst.key) ? `Si te notas «${worst.key}», no operes: ese estado te cuesta dinero.` : "Apunta siempre la emoción: es de lo que más explica tus resultados."});
+  }
+  const plan = ts.filter(t => t.followed_plan === true), noplan = ts.filter(t => t.followed_plan === false);
+  if (noplan.length) {
+    const a = g("Siguiendo el plan", plan), b = g("Saltándote el plan", noplan);
+    P.push({title: "Disciplina con el plan", level: worse(b, a) ? "alerta" : "info", rows: [a, b],
+      text: `Te saltaste el plan en ${noplan.length} de ${plan.length + noplan.length} operaciones (${fmtP(100 * noplan.length / (plan.length + noplan.length))}). Diferencia de expectativa: ${fmtR((a.exp ?? 0) - (b.exp ?? 0))} por operación.`,
+      tip: "Antes de cada entrada, repasa la checklist de «Mi estrategia»."});
+  }
+  const contra = ts.filter(t => t.aligned === false), favor = ts.filter(t => t.aligned === true);
+  if (contra.length) {
+    const a = g("A favor del sesgo diario", favor), b = g("Contra el sesgo diario", contra);
+    P.push({title: "Operar contra el sesgo", level: worse(b, a) ? "alerta" : "info", rows: [a, b],
+      text: `${contra.length} operaciones contra el sesgo del día, con ${fmtR(b.totalR)} en total.`,
+      tip: worse(b, a) ? "Opera solo a favor del sesgo, o con medio riesgo si vas en contra." : "Ir contra el sesgo no te está penalizando, pero vigílalo."});
+  }
+  // 6. Horas, días, dirección
+  const hours = ts.filter(t => t.hour != null).map(t => ({...t, franja: t.hour < 9 ? "Antes de las 9" : t.hour < 12 ? "9-12 h" : t.hour < 15 ? "12-15 h" : t.hour < 18 ? "15-18 h" : "18 h o más"}));
+  const hb = breakdown(hours, "franja", MIN);
+  if (hb.length >= 2) P.push({title: "Horas", level: (hb[hb.length - 1].exp ?? 0) < 0 ? "atencion" : "info", rows: hb.map(r => ({...r, label: r.key})),
+    text: `Tu mejor franja es ${hb[0].key} (${fmtR(hb[0].exp)}) y la peor ${hb[hb.length - 1].key} (${fmtR(hb[hb.length - 1].exp)}).`,
+    tip: (hb[hb.length - 1].exp ?? 0) < 0 ? `Evita operar ${hb[hb.length - 1].key.toLowerCase()}.` : "Concentra tus operaciones en tu mejor franja."});
+  const wd = breakdown(ts, "weekday", MIN);
+  if (wd.length >= 2) P.push({title: "Días de la semana", level: (wd[wd.length - 1].exp ?? 0) < 0 ? "atencion" : "info", rows: wd.map(r => ({...r, label: r.key})),
+    text: `Mejor día: ${wd[0].key} (${fmtR(wd[0].exp)}). Peor: ${wd[wd.length - 1].key} (${fmtR(wd[wd.length - 1].exp)}).`, tip: (wd[wd.length - 1].exp ?? 0) < 0 ? `Reduce riesgo o no operes los ${wd[wd.length - 1].key.toLowerCase()}.` : "Ningún día es claramente perdedor."});
+  const dir = breakdown(ts, "direction", MIN);
+  if (dir.length === 2) P.push({title: "Largos o cortos", level: Math.abs((dir[0].exp ?? 0) - (dir[1].exp ?? 0)) > 0.4 ? "atencion" : "info", rows: dir.map(r => ({...r, label: r.key === "Long" ? "Compras" : "Ventas"})),
+    text: `Te va mejor en ${dir[0].key === "Long" ? "compras" : "ventas"} (${fmtR(dir[0].exp)}) que en ${dir[1].key === "Long" ? "compras" : "ventas"} (${fmtR(dir[1].exp)}).`, tip: "Si la diferencia se mantiene con más operaciones, especialízate en tu lado fuerte."});
+  // 7. Día siguiente
+  const days = Object.keys(byDay).sort(), nextAfterWin = [], nextAfterLoss = [];
+  days.forEach((d, i) => { if (!i) return; const prevR = byDay[days[i - 1]].reduce((s, t) => s + (t.r || 0), 0); (prevR > 0 ? nextAfterWin : prevR < 0 ? nextAfterLoss : []).push(...byDay[d]); });
+  if (nextAfterWin.length >= MIN && nextAfterLoss.length >= MIN) {
+    const a = g("Día después de un día ganador", nextAfterWin), b = g("Día después de un día perdedor", nextAfterLoss);
+    P.push({title: "El día siguiente", level: worse(a, b) || worse(b, a) ? "atencion" : "info", rows: [a, b],
+      text: worse(a, b) ? "Después de un buen día te relajas y rindes peor." : worse(b, a) ? "Después de un mal día arrastras la frustración al siguiente." : "El resultado de un día no afecta mucho al siguiente.",
+      tip: "Empieza cada día con la misma rutina, haya ido como haya ido el anterior."});
+  }
+  // 8. Consistencia del riesgo (a partir del beneficio en dinero)
+  const risks = ts.filter(t => t.pnl != null && t.r && Math.abs(t.r) > 0.2).map(t => Math.abs(t.pnl / t.r));
+  if (risks.length >= 5) {
+    const m = mean(risks), sd = Math.sqrt(mean(risks.map(x => (x - m) ** 2))), cv = sd / m;
+    P.push({title: "Riesgo por operación", level: cv > 0.35 ? "alerta" : "bien", rows: [],
+      text: `Arriesgas de media unos ${m.toFixed(0)} por operación, con una variación del ${(cv * 100).toFixed(0)}%.` + (cv > 0.35 ? " Tu riesgo cambia mucho de una operación a otra." : " Tu riesgo es estable."),
+      tip: cv > 0.35 ? "Fija el mismo riesgo en todas las operaciones (por ejemplo, 1% de la cuenta)." : "Bien: riesgo constante."});
+  }
+  // 9. Evolución
+  if (ts.length >= 10) {
+    const half = Math.min(20, Math.floor(ts.length / 2)), recent = ts.slice(-half), before = ts.slice(0, ts.length - half);
+    const a = g(`Tus últimas ${half}`, recent), b = g("Las anteriores", before);
+    const pr = recent.filter(t => t.followed_plan != null), pb = before.filter(t => t.followed_plan != null);
+    P.push({title: "Evolución", level: better(a, b) ? "bien" : worse(a, b) ? "alerta" : "info", rows: [b, a],
+      text: (better(a, b) ? "Vas a mejor." : worse(a, b) ? "Tus últimas operaciones van peor que las anteriores." : "Tu rendimiento se mantiene estable.") + (pr.length && pb.length ? ` Plan cumplido: ${fmtP(100 * pr.filter(t => t.followed_plan).length / pr.length)} ahora frente a ${fmtP(100 * pb.filter(t => t.followed_plan).length / pb.length)} antes.` : ""),
+      tip: worse(a, b) ? "Reduce el riesgo a la mitad hasta recuperar tu media y revisa qué ha cambiado." : "Sigue registrando para confirmar la tendencia."});
+  }
+  const order = {alerta: 0, atencion: 1, bien: 2, info: 3};
+  return P.sort((x, y) => order[x.level] - order[y.level]);
+}
+function renderBehavior() {
+  const ts = state.trades.filter(t => t.win || t.loss || t.result === "BE");
+  $("#b-empty").hidden = ts.length >= 5;
+  $("#b-empty").innerHTML = `Para detectar patrones de comportamiento hacen falta al menos 5 operaciones cerradas (llevas ${ts.length}). Cuantas más, más fiables. <button class="btn" data-goto="operaciones">Añadir operaciones</button>`;
+  const P = ts.length >= 5 ? behaviorPatterns(ts) : [];
+  const lbl = {alerta: ["Alerta", "down"], atencion: ["Atención", "warn"], bien: ["Bien", "up"], info: ["Dato", ""]};
+  const counts = P.reduce((c, p) => (c[p.level] = (c[p.level] || 0) + 1, c), {});
+  $("#b-summary").innerHTML = P.length ? `<span class="pill down">${counts.alerta || 0} alertas</span> <span class="pill warn">${counts.atencion || 0} a vigilar</span> <span class="pill up">${counts.bien || 0} hábitos buenos</span>` : "";
+  $("#b-cards").innerHTML = P.map(p => `<div class="panel">
+    <div class="panel-head"><h3>${esc(p.title)}</h3><span class="pill ${lbl[p.level][1]}">${lbl[p.level][0]}</span></div>
+    <p style="margin:0">${esc(p.text)}</p>
+    ${p.rows.length ? `<div class="tablebox"><table><thead><tr><th></th><th class="n">Ops</th><th class="n">WR</th><th class="n">Expectativa</th><th class="n">R total</th></tr></thead><tbody>${p.rows.map(r => `<tr><td>${esc(r.label)}</td><td class="n">${r.n}</td><td class="n">${r.n ? fmtP(r.wr) : "—"}</td><td class="n ${cls(r.exp)}">${r.n ? fmtR(r.exp) : "—"}</td><td class="n ${cls(r.totalR)}">${r.n ? fmtR(r.totalR) : "—"}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    <p class="small" style="margin:0"><b>Qué hacer:</b> ${esc(p.tip)}</p>
+    ${p.rows.some(r => r.n > 0 && r.n < 3) ? `<p class="small muted" style="margin:0">Grupos con menos de 3 operaciones: tómalo como orientativo.</p>` : ""}
+  </div>`).join("");
+  if (state.behaviorReport && !$("#b-ai-out").textContent) { $("#b-ai-out").innerHTML = mdLite(state.behaviorReport.text || ""); $("#b-ai-date").textContent = "Último informe: " + (state.behaviorReport.date || ""); }
+}
+let behCtl;
+$("#b-ai").addEventListener("click", async () => {
+  const ts = state.trades;
+  if (!ts.length) { $("#b-ai-out").textContent = "Registra operaciones primero."; return; }
+  const P = behaviorPatterns(ts);
+  const prompt = `${COACH}
+${stratTxt()}
+Eres también especialista en psicología del trading. Analiza el COMPORTAMIENTO de este trader (no su análisis técnico): hábitos, sesgos psicológicos (revancha, exceso de confianza, miedo a perder, aversión a cerrar pérdidas, FOMO, sobreoperar, impaciencia), disciplina y gestión emocional. Basa cada afirmación en los datos y cita cifras.
+PATRONES DETECTADOS POR LAS REGLAS: ${P.map(p => `[${p.level}] ${p.title}: ${p.text}`).join(" | ")}
+OPERACIONES EN ORDEN CRONOLÓGICO (CSV):
+${compactCSV([...ts].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))))}
+
+Escribe el informe con estos apartados (títulos con ##):
+## Tu perfil como trader (3-4 frases)
+## Patrones de comportamiento que te cuestan dinero (ordenados por R perdido)
+## Hábitos buenos que debes mantener
+## Disparadores: qué situaciones te hacen operar peor
+## Plan de mejora de 30 días (5 reglas concretas y medibles)`;
+  behCtl = new AbortController(); $("#b-ai").disabled = true; $("#b-stop").hidden = false;
+  const text = await askAI($("#b-ai-out"), prompt, {modelTier: "complex", signal: behCtl.signal});
+  $("#b-ai").disabled = false; $("#b-stop").hidden = true;
+  if (text && col) { try { await col.doc("behavior_report").set({kind: "report", text, date: todayISO()}); $("#b-ai-date").textContent = "Último informe: " + todayISO(); } catch {} }
+});
+$("#b-stop").addEventListener("click", () => behCtl?.abort());
 
 // =====================================================================
 // Coach IA
