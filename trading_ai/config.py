@@ -29,6 +29,7 @@ DEFAULT_CONFLUENCES = [
     "Liquidez barrida",
     "Order Block",
     "FVG",
+    "iFVG",
     "BOS / CHoCH",
     "Soporte/Resistencia",
     "Zona premium/discount",

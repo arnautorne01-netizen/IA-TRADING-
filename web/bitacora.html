@@ -536,7 +536,7 @@ details summary{cursor:pointer;font-weight:600}
 const SESSIONS = ["Londres","Nueva York","Overlap Londres-NY","Asia","Fuera de sesión"];
 const EMOTIONS = ["Tranquilo","Confiado","Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"];
 const NEG_EMO = new Set(["Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"]);
-const CONFLUENCES = ["Sesgo diario a favor","Sesgo H4 a favor","Liquidez barrida","Order Block","FVG","BOS / CHoCH","Soporte/Resistencia","Zona premium/discount","Killzone","Divergencia RSI","EMA 200 a favor","Noticia a favor","Patrón de velas","Nivel psicológico","PDH/PDL","Asia High/Low","Correlación DXY confirma","Volumen confirma"];
+const CONFLUENCES = ["Sesgo diario a favor","Sesgo H4 a favor","Liquidez barrida","Order Block","FVG","iFVG","BOS / CHoCH","Soporte/Resistencia","Zona premium/discount","Killzone","Divergencia RSI","EMA 200 a favor","Noticia a favor","Patrón de velas","Nivel psicológico","PDH/PDL","Asia High/Low","Correlación DXY confirma","Volumen confirma"];
 const MISTAKES = ["Entrada anticipada","Entrada tardía","Mover SL","Cerrar antes de TP","Sobreoperar","Revenge trading","FOMO","Contra sesgo","Operar en noticia","Riesgo excesivo","Sin confirmación"];
 const WEEKDAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const BE = 0.1;
@@ -581,6 +581,8 @@ const num = v => { if (v === null || v === undefined || v === "") return null; c
 const fmtR = v => v == null || Number.isNaN(v) ? "—" : (v > 0 ? "+" : "") + v.toFixed(2) + "R";
 const fmtP = v => v == null || Number.isNaN(v) ? "—" : v.toFixed(1) + "%";
 const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+// iFVG = FVG invertido; se guarda siempre con el mismo nombre para que cuente como una sola confluencia
+const canonConf = c => /^(i[\s-]?fvg|ifvg|fvg invertid[oa]s?|inverse fvg|inversion fvg|inversión fvg)$/i.test(c.trim()) ? "iFVG" : /^fvgs?$/i.test(c.trim()) ? "FVG" : c;
 const tags = v => Array.isArray(v) ? v.map(String).map(s => s.trim()).filter(Boolean) : String(v ?? "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
 const toBool = v => { if (typeof v === "boolean") return v; const s = String(v ?? "").trim().toLowerCase(); if (["1","true","si","sí","yes","s","y"].includes(s)) return true; if (["0","false","no","n"].includes(s)) return false; return null; };
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
@@ -608,7 +610,7 @@ function normalize(raw) {
   const res = String(raw.result || "").toLowerCase();
   t.result = ["win", "ganada", "tp", "w"].includes(res) ? "Win" : ["loss", "perdida", "pérdida", "sl", "l"].includes(res) ? "Loss" : ["be", "breakeven"].includes(res) ? "BE" : classify(t.r ?? (t.pnl != null ? Math.sign(t.pnl) : null));
   for (const k of ["session", "setup", "timeframe", "daily_bias", "emotion", "notes"]) t[k] = raw[k] == null ? "" : String(raw[k]).trim();
-  t.confluences = tags(raw.confluences); t.mistakes = tags(raw.mistakes);
+  t.confluences = [...new Set(tags(raw.confluences).map(canonConf))]; t.mistakes = tags(raw.mistakes);
   t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
   { const vv = String(raw.volume ?? raw.volumen ?? "").trim().toLowerCase(); t.volume = vv.startsWith("a") || vv.startsWith("h") ? "Alto" : vv.startsWith("n") ? "Normal" : vv.startsWith("b") || vv.startsWith("l") ? "Bajo" : ""; }
   t.ejemplo = !!raw.ejemplo;
@@ -1669,7 +1671,7 @@ ${stratTxt()}
 Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD o DXY (pueden ser antes de entrar, durante y el resultado).
 ${extra || ""}
 REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
-Analízala como un trader profesional: contexto y tendencia, volumen si hay un indicador visible (picos en el barrido o en la ruptura, volumen decreciente en el retroceso), estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
+Analízala como un trader profesional: contexto y tendencia, volumen si hay un indicador visible (picos en el barrido o en la ruptura, volumen decreciente en el retroceso), estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG e iFVG (un iFVG es un FVG invertido: el precio cierra a través de él y pasa a funcionar como zona contraria; si el trader lo etiqueta «ifvg» o se ve así, usa la confluencia «iFVG», no «FVG»), order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
 Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
@@ -1733,7 +1735,7 @@ function autoPrompt(n) {
   return `${COACH}
 ${stratTxt()}
 Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos de EURUSD o DXY del trader (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
-Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
+Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG e iFVG (un iFVG es un FVG invertido: el precio cierra a través de él y pasa a funcionar como zona contraria; si el trader lo etiqueta «ifvg» o se ve así, usa la confluencia «iFVG», no «FVG»), order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
 REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
 Confluencias conocidas (usa estos nombres exactos cuando apliquen; puedes añadir nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
