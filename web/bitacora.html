@@ -330,6 +330,7 @@ details summary{cursor:pointer;font-weight:600}
         <b style="font-size:1.1rem">Suelta aquí las capturas de tus operaciones</b>
         <span class="small muted">O pulsa para elegirlas, o pégalas con Ctrl+V. La IA detecta la operación, la guarda y actualiza tu estrategia. No tienes que escribir nada.<br>Puedes soltar capturas de varias operaciones a la vez: la IA las separa.</span>
         <input type="file" id="auto-file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+      <div id="auto-pending" class="banner warn" hidden></div>
       <div id="auto-out" style="display:flex;flex-direction:column;gap:10px"></div>
       <p class="small muted" style="margin:0">Para que la IA lea bien el resultado, usa capturas donde se vean la herramienta de posición (entrada, SL y TP), la escala de precios y las fechas del eje.</p>
     </div>
@@ -731,8 +732,9 @@ async function boot() {
   const [db, user, sample, assets] = await Promise.all([use("db"), use("user"), use("sample"), use("assets")]);
   state.sample = sample; state.assets = assets;
   $("#t-shot-wrap").hidden = !assets;
-  if (sample) { try { const lim = await sample.limits(); state.imgLimit = lim?.images?.maxCount || 0; } catch {} }
-  $("#t-ai").hidden = !state.imgLimit;
+  state.imgLimit = null;
+  if (sample) { try { const lim = await sample.limits(); state.imgLimit = lim?.images?.maxCount || 0; } catch { state.imgLimit = null; } }
+  $("#t-ai").hidden = state.imgLimit === 0;
   document.querySelectorAll("[data-ai]").forEach(b => b.disabled = !sample);
   $("#ai-off").hidden = !!sample;
   if (!db || !user) {
@@ -747,6 +749,7 @@ async function boot() {
   col.onSnapshot(snap => {
     state.trades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    state.pending = snap.docs.filter(d => d.data()?.kind === "pending_shots").length; renderPending();
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
     const rep = snap.docs.find(d => d.id === "coach_report");
@@ -1563,7 +1566,7 @@ function renderOps() {
     {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
     {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<span class="small muted">+${t.shots.length - 3}</span>` : ""}</span>`},
-    {h: "IA", html: 1, f: t => t.ai_analysis ? `<span class="pill up" title="${esc(t.ai_analysis)}">Analizada</span>` : t.shots.length && state.imgLimit ? `<button class="btn" data-analyze="${esc(t.id)}">Analizar</button>` : ""},
+    {h: "IA", html: 1, f: t => t.ai_analysis ? `<span class="pill up" title="${esc(t.ai_analysis)}">Analizada</span>` : t.shots.length && state.imgLimit !== 0 && state.sample ? `<button class="btn" data-analyze="${esc(t.id)}">Analizar</button>` : ""},
     {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
   ], [...ts].reverse());
 }
@@ -1593,7 +1596,7 @@ function addImages(list) {
   const imgs = [...list].filter(f => /^image\/(png|jpeg|webp)$/.test(f.type));
   if (!imgs.length) return;
   state.pendingFiles.push(...imgs); renderThumbs();
-  if (state.sample && state.imgLimit) runImageAnalysis();
+  if (state.sample && state.imgLimit !== 0) runImageAnalysis();
 }
 $("#t-shot").addEventListener("change", e => { addImages(e.target.files); e.target.value = ""; });
 const drop = $("#t-drop");
@@ -1663,7 +1666,7 @@ async function runImageAnalysis() {
     const blobs = [...files];
     for (const id of state.formShots) { const b = await fetchBlob(id); if (b) blobs.push(b); }
     shotCtl = new AbortController();
-    const a = await state.sample.json(analysisPrompt(), {images: blobs.slice(0, state.imgLimit), modelTier: "complex", signal: shotCtl.signal});
+    const a = await state.sample.json(analysisPrompt(), {images: blobs.slice(0, state.imgLimit || 5), modelTier: "complex", signal: shotCtl.signal});
     if (!a || typeof a !== "object") throw {code: "invalid_json"};
     applyAnalysis(a);
     out.innerHTML = `<b>Listo.</b> He rellenado lo que se ve en la imagen: revísalo y pulsa «Guardar operación».\n` + mdLite(state.formAI);
@@ -1700,14 +1703,15 @@ async function autoFromImages(list) {
   const files = [...list].filter(f => /^image\/(png|jpeg|webp)$/.test(f.type));
   const out = $("#auto-out");
   if (!files.length) return;
-  if (!state.sample || !state.imgLimit) { out.insertAdjacentHTML("afterbegin", `<div class="banner">La IA con imágenes no está disponible en esta vista. Abre la página en claude.ai con tu cuenta.</div>`); return; }
+  if (!state.sample || state.imgLimit === 0) { await queueShots(files); return; }
   if (autoBusy) { out.insertAdjacentHTML("afterbegin", `<div class="banner">Espera a que termine el análisis anterior.</div>`); return; }
   autoBusy = true;
   const status = document.createElement("div"); status.className = "banner info"; out.prepend(status);
   let saved = 0;
   try {
-    for (let i = 0; i < files.length; i += state.imgLimit) {
-      const chunk = files.slice(i, i + state.imgLimit);
+    const per = state.imgLimit || 5;
+    for (let i = 0; i < files.length; i += per) {
+      const chunk = files.slice(i, i + per);
       status.textContent = `La IA está mirando ${chunk.length === 1 ? "la captura" : `${chunk.length} capturas`}… (puede tardar hasta un minuto)`;
       const res = await state.sample.json(autoPrompt(chunk.length), {images: chunk, modelTier: "complex"});
       const ops = Array.isArray(res?.operaciones) ? res.operaciones : Array.isArray(res) ? res : [];
@@ -1748,6 +1752,7 @@ async function autoFromImages(list) {
       status.innerHTML = `${saved} ${saved === 1 ? "operación guardada" : "operaciones guardadas"} automáticamente. ${ok ? `Tu estrategia está actualizada: <button class="btn" data-goto="estrategia">Ver mi estrategia</button>` : "No se pudo actualizar la estrategia ahora; puedes hacerlo desde «Mi estrategia»."}`;
     }
   } catch (e) {
+    if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && !saved) { status.remove(); autoBusy = false; state.imgLimit = 0; await queueShots(files); return; }
     status.className = "banner";
     status.textContent = e.code === "invalid_json" ? "No pude leer bien las capturas. Prueba con imágenes más nítidas donde se vean el precio y las fechas." : AI_ERR[e.code] || "No se pudo analizar: " + (e.message || e.code);
   } finally { autoBusy = false; }
@@ -1760,6 +1765,32 @@ $("#auto-file").addEventListener("change", e => { autoFromImages(e.target.files)
   z.addEventListener("drop", e => autoFromImages(e.dataTransfer.files));
 }
 
+
+// Si esta vista no deja enviar imágenes a la IA: se guardan y las procesa la tarea en segundo plano
+const PROCESS_TRIGGER = "trig_015NesUkGVEicjuX5EWoMYv4";
+async function queueShots(files) {
+  const out = $("#auto-out");
+  const box = document.createElement("div"); box.className = "banner info"; out.prepend(box);
+  if (!state.assets || !col) { box.className = "banner"; box.textContent = "No puedo guardar las capturas en esta vista. Abre la página en claude.ai con tu cuenta (en el navegador del ordenador funciona mejor)."; return; }
+  try {
+    box.textContent = "Subiendo las capturas…";
+    const shots = [];
+    for (const f of files) shots.push((await state.assets.upload(f)).id);
+    await col.doc("pending_" + Date.now().toString(36)).set({kind: "pending_shots", shots, created: new Date().toISOString()});
+    let fired = false;
+    const mcp = await use("mcp");
+    if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader acaba de subir capturas nuevas."}); fired = true; } catch (err) { console.warn("fire_trigger", err?.code); } }
+    box.innerHTML = fired
+      ? `Capturas recibidas (${shots.length}). La IA las está analizando en segundo plano: en unos minutos aparecerán solas en tu lista y se actualizará tu estrategia. Puedes cerrar la página.`
+      : `Capturas recibidas (${shots.length}). La IA las analizará en la próxima revisión automática (13:07, 19:07 o 23:07) y aparecerán solas en tu lista.`;
+  } catch (err) { box.className = "banner"; box.textContent = "No se pudieron guardar las capturas: " + (err.message || err.code); }
+}
+function renderPending() {
+  const n = state.pending || 0, el = $("#auto-pending");
+  el.hidden = !n;
+  el.textContent = n ? `${n} ${n === 1 ? "envío de capturas pendiente" : "envíos de capturas pendientes"} de analizar por la IA en segundo plano…` : "";
+}
+
 // Analizar una operación ya guardada a partir de sus imágenes
 $("#o-table").addEventListener("click", async e => {
   const b = e.target.closest("[data-analyze]"); if (!b) return;
@@ -1768,7 +1799,7 @@ $("#o-table").addEventListener("click", async e => {
   try {
     const blobs = []; for (const id of t.shots) { const x = await fetchBlob(id); if (x) blobs.push(x); }
     if (!blobs.length) throw {message: "no se pudieron leer las imágenes"};
-    const a = await state.sample.json(analysisPrompt(`Datos ya registrados de esta operación: ${JSON.stringify({fecha: t.date, par: t.pair, dir: t.direction, setup: t.setup, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}`), {images: blobs.slice(0, state.imgLimit), modelTier: "complex"});
+    const a = await state.sample.json(analysisPrompt(`Datos ya registrados de esta operación: ${JSON.stringify({fecha: t.date, par: t.pair, dir: t.direction, setup: t.setup, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}`), {images: blobs.slice(0, state.imgLimit || 5), modelTier: "complex"});
     const text = [a?.analisis, a?.estrategia].filter(Boolean).join("\n\n");
     if (!text) throw {code: "invalid_json"};
     await col.doc(t.id).update({ai_analysis: text});
