@@ -1641,6 +1641,7 @@ function analysisPrompt(extra) {
 ${stratTxt()}
 Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD o DXY (pueden ser antes de entrar, durante y el resultado).
 ${extra || ""}
+REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
 Analízala como un trader profesional: contexto y tendencia, volumen si hay un indicador visible (picos en el barrido o en la ruptura, volumen decreciente en el retroceso), estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
 Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
@@ -1655,6 +1656,7 @@ Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no 
 "estrategia":"2-3 frases: qué estrategia/modelo refleja esta operación${state.profile ? " y cuánto encaja con su estrategia detectada" : ""}"}`;
 }
 function applyAnalysis(a) {
+  fixOutcome(a);
   const setIf = (id, v) => { if (v != null && v !== "" && !$(id).value) $(id).value = v; };
   const setSel = (id, v, ok) => { if (v && ok.includes(v)) $(id).value = v; };
   if (a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) && $("#t-date").value === todayISO()) $("#t-date").value = a.date;
@@ -1671,6 +1673,7 @@ function applyAnalysis(a) {
   }
   if (extra.length) $("#t-conf-extra").value = [...tags($("#t-conf-extra").value), ...extra].join(", ");
   if (a.result && num($("#t-r").value) == null && !$("#t-exit").value) $("#t-r").placeholder = a.result === "Win" ? "Ganadora: pon el R" : a.result === "Loss" ? "-1" : "0";
+  if (a.exit_price == null && a.r_fallback != null && !$("#t-r").value) $("#t-r").value = a.r_fallback;
   state.formAI = [a.analisis, a.estrategia].filter(Boolean).join("\n\n");
 }
 let shotCtl;
@@ -1704,7 +1707,7 @@ function autoPrompt(n) {
 ${stratTxt()}
 Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos de EURUSD o DXY del trader (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
 Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
-Si en la imagen no se ve cómo terminó, deduce el resultado solo si es evidente (por ejemplo, el precio llega claramente al objetivo o al stop dibujado); si no, deja result y r en null.
+REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
 Confluencias conocidas (usa estos nombres exactos cuando apliquen; puedes añadir nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
@@ -1747,10 +1750,11 @@ async function autoFromImages(list) {
         const time = /^\d{1,2}:\d{2}$/.test(op.time || "") ? op.time.padStart(5, "0") : "";
         const pair = ["EURUSD", "DXY"].includes(op.pair) ? op.pair : "EURUSD";
         const confs = (Array.isArray(op.confluences) ? op.confluences : []).map(String);
+        fixOutcome(op);
         const raw = {date, time, pair, direction: op.direction === "Short" ? "Short" : "Long", timeframe: op.timeframe || "",
           session: SESSIONS.includes(op.session) ? op.session : sessionFromMadridHour(time ? +time.slice(0, 2) : NaN),
           daily_bias: biasFromBriefing(date, pair), entry: op.entry, stop_loss: op.stop_loss, take_profit: op.take_profit, exit_price: op.exit_price,
-          r: [op.entry, op.stop_loss, op.exit_price].every(v => num(v) != null) ? null : op.r, result: op.result || null,
+          r: op.exit_price == null ? (num(op.r) ?? null) : null, result: op.result || null,
           setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"),
           notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy)"}`};
         const id = await saveTrade(raw);
@@ -1785,6 +1789,18 @@ $("#auto-file").addEventListener("change", e => { autoFromImages(e.target.files)
 }
 
 
+// El resultado manda: Win = salida en el TP, Loss = salida en el SL (zona azul / zona naranja)
+function fixOutcome(op) {
+  const e = num(op.entry), sl = num(op.stop_loss), tp = num(op.take_profit);
+  if (e != null && sl != null && tp != null) { // la dirección sale de dónde está el TP
+    op.direction = tp > e ? "Long" : "Short";
+    if ((op.direction === "Long" && sl > e) || (op.direction === "Short" && sl < e)) { const x = op.stop_loss; op.stop_loss = op.take_profit; op.take_profit = x; }
+  }
+  if (op.result === "Win" && op.take_profit != null) op.exit_price = op.take_profit;
+  else if (op.result === "Loss" && op.stop_loss != null) op.exit_price = op.stop_loss;
+  if (op.exit_price == null && op.r != null) op.r_fallback = op.r;
+  return op;
+}
 // Si esta vista no deja enviar imágenes a la IA: se guardan y las procesa la tarea en segundo plano
 const PROCESS_TRIGGER = "trig_015NesUkGVEicjuX5EWoMYv4";
 async function queueShots(files) {
