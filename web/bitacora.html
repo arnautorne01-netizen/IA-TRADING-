@@ -166,6 +166,25 @@ details summary{cursor:pointer;font-weight:600}
         <div class="tablebox" style="max-height:300px"><table id="brief-history"></table></div>
       </div>
     </div>
+    <div class="panel" id="mtf-panel">
+      <div class="panel-head">
+        <div><h3>Estructura multitemporal y CRT pendientes</h3><div class="small muted">Velas de 4H a 3 meses, ancladas a las 17:00 de Nueva York (inicio del día forex)</div></div>
+        <select id="mtf-pair" style="width:auto" aria-label="Par"><option>EURUSD</option><option>DXY</option></select>
+      </div>
+      <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
+      <div id="mtf-body" hidden style="display:flex;flex-direction:column;gap:10px">
+        <div class="small muted" id="mtf-meta"></div>
+        <div class="chips" id="mtf-strip"></div>
+        <div class="small" id="mtf-sum"></div>
+        <div class="tablebox"><table id="mtf-table"></table></div>
+        <p class="small muted" style="margin:0">CRT: una vela barre el máximo o el mínimo de la anterior y cierra dentro de su rango; el objetivo es el extremo opuesto. «Pendiente» significa que el precio aún no ha llegado al objetivo ni ha superado el extremo del barrido.</p>
+      </div>
+      <details><summary class="small">Subir velas desde TradingView</summary>
+        <p class="small" style="margin:6px 0">En TradingView abre el gráfico del par en <b>1 hora</b>, carga todo el historial que puedas (cuanto más, mejor: un año da para 1 mes y 3 meses) y usa «Exportar datos del gráfico». Sube aquí el archivo con el par correcto elegido arriba. Opcional: sube también el gráfico <b>diario</b> para tener más historia en 1 mes y 3 meses.</p>
+        <input type="file" id="mtf-file" accept=".csv,text/csv" multiple>
+        <div id="mtf-msg" class="small"></div>
+      </details>
+    </div>
     <div class="panel" id="vol-panel">
       <div class="panel-head"><h3>Volumen y posicionamiento</h3><span class="muted small">Futuros CME/ICE y COT de la CFTC</span></div>
       <p class="muted small" style="margin:0">En forex al contado no hay volumen centralizado (lo que ve tu bróker es volumen de ticks). El volumen real sale de los futuros: Euro FX (6E) en la CME y el DXY en ICE.</p>
@@ -673,7 +692,7 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], formAI: "", imgLimit: 0, loaded: false, filter: {}, editing: null};
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
 let col = null;
 
 async function boot() {
@@ -706,6 +725,14 @@ async function boot() {
     $("#who").textContent = `${state.trades.length} operaciones en tu journal`;
     renderAll();
   }, e => banner("No se pudo leer tu journal: " + e.message));
+  db.collection("market").onSnapshot(snap => {
+    for (const d of snap.docs) {
+      const [pair, kind] = d.id.split("_"); if (!pair || !kind) continue;
+      const data = d.data();
+      state.market[pair] = {...state.market[pair], [kind]: unpackBars(data), source: data.source || state.market[pair]?.source};
+    }
+    if (activeTab() === "hoy") renderMTF();
+  }, () => {});
   db.collection("briefings").orderBy("date", "desc").limit(60).onSnapshot(snap => {
     state.briefings = snap.docs.map(d => d.data()).filter(b => b && b.date);
     renderBriefing();
@@ -748,7 +775,7 @@ function renderAll() {
   if (tab === "operaciones") { renderForm(); renderOps(); }
   if (tab === "estrategia") renderStrategy();
   if (tab === "coach") renderCoach();
-  if (tab === "hoy") renderBriefing();
+  if (tab === "hoy") { renderBriefing(); renderMTF(); }
 }
 
 // =====================================================================
@@ -1097,6 +1124,176 @@ function renderBriefing() {
 }
 $("#brief-picker").addEventListener("change", renderBriefing);
 
+// =====================================================================
+// Estructura multitemporal y rangos CRT pendientes
+// Velas ancladas al inicio del día forex (17:00 de Nueva York).
+// =====================================================================
+const MTF = [["4H", 4], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
+  ["2D", "D2"], ["3D", "D3"], ["4D", "D4"], ["5D", "D5"], ["6D", "D6"], ["7D", "D7"], ["1 semana", "W"], ["1 mes", "M"], ["3 meses", "Q"]];
+const _nyFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
+const _offCache = new Map();
+function nyOffsetMin(ms) {
+  const k = Math.floor(ms / 3.6e6);
+  if (_offCache.has(k)) return _offCache.get(k);
+  const p = Object.fromEntries(_nyFmt.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+  const off = Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute) - ms) / 6e4);
+  _offCache.set(k, off); return off;
+}
+// Reloj forex: 17:00 NY pasa a ser 00:00 del día de trading siguiente
+function fxClock(ms) {
+  const f = new Date(ms + (nyOffsetMin(ms) + 420) * 6e4);
+  return {day: f.toISOString().slice(0, 10), hour: f.getUTCHours(), y: f.getUTCFullYear(), m: f.getUTCMonth()};
+}
+function bizIndex(day) {
+  const days = Math.round((Date.parse(day + "T00:00:00Z") - Date.parse("2000-01-03T00:00:00Z")) / 864e5);
+  return Math.floor(days / 7) * 5 + Math.min(days % 7, 5);
+}
+function weekKey(day) { const d = new Date(day + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); }
+function aggregate(bars, keyFn) {
+  const out = []; let cur = null, ck = null;
+  for (const b of bars) {
+    const k = keyFn(b);
+    if (k !== ck) { if (cur) out.push(cur); cur = {t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, k}; ck = k; }
+    else { cur.h = Math.max(cur.h, b.h); cur.l = Math.min(cur.l, b.l); cur.c = b.c; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function seriesFor(tf, h1, d1) {
+  if (typeof tf === "number") {
+    if (!h1.length) return [];
+    return aggregate(h1, b => { const f = fxClock(b.t * 1000); return tf >= 24 ? f.day : f.day + "|" + Math.floor(f.hour / tf); });
+  }
+  if (!d1.length) return [];
+  if (tf[0] === "D") { const n = +tf.slice(1); return aggregate(d1, b => Math.floor(bizIndex(b.day) / n)); }
+  if (tf === "W") return aggregate(d1, b => weekKey(b.day));
+  if (tf === "M") return aggregate(d1, b => b.day.slice(0, 7));
+  return aggregate(d1, b => b.day.slice(0, 4) + "Q" + Math.floor((+b.day.slice(5, 7) - 1) / 3));
+}
+// Serie diaria: la del diario guardado para el pasado y la construida desde 1H donde la haya
+function dailySeries(h1, d1raw) {
+  const fromH1 = h1.length ? aggregate(h1, b => fxClock(b.t * 1000).day).map(b => ({...b, day: b.k})) : [];
+  const first = fromH1[0]?.day || "9999";
+  const old = d1raw.map(b => ({...b, day: fxClock(b.t * 1000).day})).filter(b => b.day < first && new Date(b.day + "T12:00:00Z").getUTCDay() % 6 !== 0);
+  return [...old, ...fromH1];
+}
+function structureOf(bars, dec) {
+  const n = bars.length;
+  if (n < 6) return {label: "Sin datos", cls: "", detail: "Faltan velas para esta temporalidad"};
+  const lb = n >= 40 ? 2 : 1, sh = [], sl = [];
+  for (let i = lb; i < n - 1; i++) {
+    let H = true, L = true;
+    for (let j = 1; j <= lb; j++) {
+      if (i + j > n - 1) { H = L = false; break; }
+      if (!(bars[i].h >= bars[i - j].h && bars[i].h > bars[i + j].h)) H = false;
+      if (!(bars[i].l <= bars[i - j].l && bars[i].l < bars[i + j].l)) L = false;
+    }
+    if (H) sh.push(bars[i].h); if (L) sl.push(bars[i].l);
+  }
+  const px = bars[n - 1].c, f = v => v.toFixed(dec);
+  if (sh.length < 2 || sl.length < 2) return {label: "Rango", cls: "", detail: "Sin oscilaciones claras todavía"};
+  const [h1, h2] = sh.slice(-2), [l1, l2] = sl.slice(-2), hh = h2 > h1, hl = l2 > l1;
+  const lv = {max: h2, min: l2};
+  if (px > h2) return {label: "Alcista", cls: "up", detail: `Por encima del último máximo de swing (${f(h2)})${hl ? " con mínimos crecientes" : ""}`, ...lv};
+  if (px < l2) return {label: "Bajista", cls: "down", detail: `Por debajo del último mínimo de swing (${f(l2)})${!hh ? " con máximos decrecientes" : ""}`, ...lv};
+  if (hh && hl) return {label: "Alcista", cls: "up", detail: `Máximos y mínimos crecientes. Mínimo a defender: ${f(l2)}`, ...lv};
+  if (!hh && !hl) return {label: "Bajista", cls: "down", detail: `Máximos y mínimos decrecientes. Máximo a defender: ${f(h2)}`, ...lv};
+  return {label: "Rango", cls: "warn", detail: `${hh ? "Expansión: máximo más alto y mínimo más bajo" : "Compresión: máximo más bajo y mínimo más alto"} (${f(l2)} – ${f(h2)})`, ...lv};
+}
+// CRT: la vela 2 barre un extremo de la vela 1 y cierra dentro de su rango; objetivo el extremo opuesto
+function crtOf(bars, dec, pip) {
+  const n = bars.length, px = bars[n - 1]?.c, f = v => v.toFixed(dec), dist = t => Math.round(Math.abs(t - px) / pip);
+  if (n < 3) return null;
+  for (let i = n - 2; i >= Math.max(1, n - 8); i--) {
+    const c1 = bars[i - 1], c2 = bars[i], after = bars.slice(i + 1);
+    const hiAfter = Math.max(...after.map(b => b.h)), loAfter = Math.min(...after.map(b => b.l));
+    if (c2.h > c1.h && c2.c < c1.h && c2.c > c1.l && loAfter > c1.l && hiAfter <= c2.h)
+      return {dir: "Bajista", cls: "down", text: `Barrió el máximo ${f(c1.h)} y cerró dentro`, target: f(c1.l), dist: dist(c1.l), inval: f(c2.h), age: n - 1 - i};
+    if (c2.l < c1.l && c2.c > c1.l && c2.c < c1.h && hiAfter < c1.h && loAfter >= c2.l)
+      return {dir: "Alcista", cls: "up", text: `Barrió el mínimo ${f(c1.l)} y cerró dentro`, target: f(c1.h), dist: dist(c1.h), inval: f(c2.l), age: n - 1 - i};
+  }
+  const p = bars[n - 2], c = bars[n - 1];
+  if (c.h > p.h && c.c < p.h && c.c > p.l) return {dir: "Bajista", cls: "warn", forming: true, text: `Vela actual barre el máximo ${f(p.h)} y está dentro del rango (falta el cierre)`, target: f(p.l), dist: dist(p.l), inval: f(c.h), age: 0};
+  if (c.l < p.l && c.c > p.l && c.c < p.h) return {dir: "Alcista", cls: "warn", forming: true, text: `Vela actual barre el mínimo ${f(p.l)} y está dentro del rango (falta el cierre)`, target: f(p.h), dist: dist(p.h), inval: f(c.l), age: 0};
+  return null;
+}
+function mtfAnalysis(pair) {
+  const m = state.market[pair]; if (!m?.h1?.length && !m?.d1?.length) return null;
+  const dec = pair === "EURUSD" ? 5 : 3, pip = pair === "EURUSD" ? 0.0001 : 0.01;
+  const h1 = m.h1 || [], d1 = dailySeries(h1, m.d1 || []);
+  return MTF.map(([name, tf]) => {
+    const s = seriesFor(tf, h1, d1);
+    return {name, n: s.length, st: structureOf(s, dec), crt: crtOf(s, dec, pip)};
+  });
+}
+function mtfText(pair) {
+  const a = mtfAnalysis(pair); if (!a) return "";
+  return `${pair}: ` + a.map(r => `${r.name} ${r.st.label.toLowerCase()}${r.crt ? ` (CRT ${r.crt.dir.toLowerCase()}${r.crt.forming ? " en formación" : ""} pendiente, objetivo ${r.crt.target})` : ""}`).join(", ");
+}
+function renderMTF() {
+  const pair = $("#mtf-pair").value, m = state.market[pair];
+  const a = mtfAnalysis(pair);
+  $("#mtf-empty").hidden = !!a;
+  $("#mtf-body").hidden = !a;
+  if (!a) return;
+  const last = m.h1?.length ? m.h1[m.h1.length - 1] : m.d1?.[m.d1.length - 1];
+  $("#mtf-meta").textContent = `Última vela: ${new Date(last.t * 1000).toLocaleString("es-ES", {timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short"})} (Madrid) · precio ${last.c.toFixed(pair === "EURUSD" ? 5 : 3)} · fuente: ${m.source || "—"}`;
+  const bull = a.filter(r => r.st.label === "Alcista").length, bear = a.filter(r => r.st.label === "Bajista").length;
+  $("#mtf-strip").innerHTML = a.map(r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.name)} ${r.st.label === "Alcista" ? "↑" : r.st.label === "Bajista" ? "↓" : "↔"}</span>`).join(" ");
+  $("#mtf-sum").innerHTML = `<b>${bear}</b> temporalidades bajistas, <b>${bull}</b> alcistas y <b>${a.length - bull - bear}</b> en rango o sin datos. ` +
+    (bear > bull * 2 ? "Dominio bajista claro: prioriza ventas." : bull > bear * 2 ? "Dominio alcista claro: prioriza compras." : "Estructura mixta: opera a favor de la temporalidad mayor y reduce tamaño.");
+  table($("#mtf-table"), [
+    {h: "Temporalidad", f: r => r.name},
+    {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}">${esc(r.st.label)}</span>`},
+    {h: "Lectura", f: r => r.st.detail},
+    {h: "CRT pendiente", html: 1, f: r => r.crt ? `<span class="pill ${r.crt.cls}">${esc(r.crt.dir)}${r.crt.forming ? " · en formación" : ""}</span> <span class="small">${esc(r.crt.text)}${r.crt.age > 1 ? ` (hace ${r.crt.age} velas)` : ""}</span>` : `<span class="muted small">Ninguno</span>`},
+    {h: "Objetivo", n: 1, f: r => r.crt ? r.crt.target : "—"},
+    {h: pair === "EURUSD" ? "Distancia (pips)" : "Distancia (ptos)", n: 1, f: r => r.crt ? r.crt.dist : "—"},
+    {h: "Se invalida en", n: 1, f: r => r.crt ? r.crt.inval : "—"},
+  ], a);
+}
+// --- datos de velas: CSV de TradingView o los que guarda la tarea diaria
+function parseOHLC(text) {
+  const rows = parseCSV(text);
+  const tk = Object.keys(rows[0] || {}).find(k => ["time", "date", "datetime", "fecha", "timestamp"].includes(k));
+  if (!tk || !("open" in rows[0])) throw new Error("El CSV necesita columnas time, open, high, low, close");
+  const bars = rows.map(r => {
+    const raw = String(r[tk]).trim(), t = /^\d+(\.\d+)?$/.test(raw) ? +raw : Date.parse(raw) / 1000;
+    return {t: Math.round(t), o: +r.open, h: +r.high, l: +r.low, c: +r.close};
+  }).filter(b => Number.isFinite(b.t) && [b.o, b.h, b.l, b.c].every(Number.isFinite)).sort((x, y) => x.t - y.t);
+  if (bars.length < 10) throw new Error("Hay muy pocas velas en el archivo");
+  const gaps = bars.slice(1).map((b, i) => b.t - bars[i].t).sort((x, y) => x - y), step = gaps[gaps.length >> 1];
+  return {bars, step};
+}
+function packBars(bars, dec) { const r = v => +v.toFixed(dec); return {t: bars.map(b => b.t), o: bars.map(b => r(b.o)), h: bars.map(b => r(b.h)), l: bars.map(b => r(b.l)), c: bars.map(b => r(b.c))}; }
+function unpackBars(d) { return (d?.t || []).map((t, i) => ({t, o: d.o[i], h: d.h[i], l: d.l[i], c: d.c[i]})); }
+$("#mtf-file").addEventListener("change", async e => {
+  const pair = $("#mtf-pair").value, msg = $("#mtf-msg"), files = [...e.target.files];
+  for (const file of files) {
+    try {
+      const {bars, step} = parseOHLC(await file.text());
+      const dec = pair === "EURUSD" ? 5 : 3;
+      let kind;
+      if (step <= 3600) { // 1H o inferior: se agrupa a 1H y se guardan los últimos ~150 días
+        const h = aggregate(bars, b => Math.floor(b.t / 3600)).slice(-3600);
+        kind = "h1"; state.market[pair] = {...state.market[pair], h1: h, source: "CSV subido"};
+        // el diario largo sale del mismo archivo si cubre más tiempo
+        const d = aggregate(bars, b => fxClock(b.t * 1000).day);
+        if (d.length > (state.market[pair].d1?.length || 0)) state.market[pair].d1 = d.slice(-1500);
+      } else if (step >= 72000) { kind = "d1"; state.market[pair] = {...state.market[pair], d1: bars.slice(-1500), source: state.market[pair]?.source || "CSV subido"}; }
+      else throw new Error("Sube el gráfico en 1 hora (o menos) o en diario");
+      if (state.db) {
+        const m = state.market[pair];
+        if (m.h1) await state.db.doc(`market/${pair}_h1`).set({...packBars(m.h1, dec), source: m.source, updated: new Date().toISOString()});
+        if (m.d1) await state.db.doc(`market/${pair}_d1`).set({...packBars(m.d1, dec), source: m.source, updated: new Date().toISOString()});
+      }
+      msg.innerHTML = `<span class="pos">${esc(file.name)}: ${bars.length} velas de ${kind === "h1" ? "1 hora o menos" : "1 día"} cargadas para ${pair}.</span>`;
+    } catch (err) { msg.innerHTML = `<span class="neg">${esc(file.name)}: ${esc(err.message || err.code)}</span>`; }
+  }
+  e.target.value = ""; renderMTF();
+});
+$("#mtf-pair").addEventListener("change", renderMTF);
+
 // Evaluador de noticias (reglas)
 function parseNum(s) { const m = String(s ?? "").trim().replace(",", ".").match(/^([+-]?\d*\.?\d+)\s*([kKmMbB%]?)$/); if (!m) return null; return Number(m[1]) * ({k: 1e3, m: 1e6, b: 1e9}[m[2].toLowerCase()] || 1); }
 function evaluateEvent() {
@@ -1129,6 +1326,7 @@ $("#paste-go").addEventListener("click", () => {
   askAI($("#paste-out"), `Eres analista macro y técnico de forex. Responde en español.
 Fecha de hoy: ${todayISO()}.
 Briefing más reciente (${b?.date || "ninguno"}): ${b ? JSON.stringify({resumen: b.summary, EURUSD: b.pairs?.EURUSD, DXY: b.pairs?.DXY}) : "no disponible"}.
+Estructura multitemporal calculada con velas reales: ${mtfText("EURUSD") || "no disponible"} | ${mtfText("DXY") || "no disponible"}
 Noticias y datos que ha leído el trader hoy:
 ${txt.slice(0, 8000)}
 
@@ -1198,6 +1396,7 @@ Analízala como un trader profesional: contexto y tendencia, volumen si hay un i
 Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
+Estructura actual del mercado por temporalidades (calculada con velas reales): ${mtfText("EURUSD") || "no disponible"}
 
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
 {"pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
