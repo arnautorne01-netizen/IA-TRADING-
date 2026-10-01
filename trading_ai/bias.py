@@ -14,9 +14,9 @@ import pandas as pd
 
 from .technical import TechnicalBias, score_label
 
-TECH_WEIGHT = 0.55
-FUND_WEIGHT = 0.30
-NEWS_WEIGHT = 0.15
+TECH_WEIGHT = 0.30
+FUND_WEIGHT = 0.60
+NEWS_WEIGHT = 0.10
 # Peso de la confirmación inversa entre EURUSD y DXY
 CROSS_WEIGHT = 0.30
 STEEPNESS = 2.2

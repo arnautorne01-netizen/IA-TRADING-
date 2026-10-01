@@ -77,6 +77,15 @@ textarea{min-height:70px;resize:vertical}
 .prob .u{background:var(--up-soft);color:var(--up);justify-content:flex-start}
 .prob .d{background:var(--down-soft);color:var(--down);justify-content:flex-end}
 .pair-card .price{font:600 1.9rem var(--f-mono)}
+.mix{display:flex;flex-direction:column;gap:6px}
+.mix-row{display:grid;grid-template-columns:minmax(120px,170px) 1fr 52px;gap:10px;align-items:center;font-size:.85rem}
+.dv{position:relative;height:12px;background:var(--bg);border-radius:3px}
+.dv::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.dv i{position:absolute;top:0;bottom:0;border-radius:3px}
+.dv i.p{left:50%;background:var(--up)} .dv i.n{right:50%;background:var(--down)}
+ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
+ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
+ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .levels{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.88rem}
 .levels dt{color:var(--muted)} .levels dd{margin:0;font-family:var(--f-mono)}
 .news{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
@@ -135,12 +144,23 @@ details summary{cursor:pointer;font-weight:600}
     <div class="panel-head">
       <div>
         <div class="label" id="brief-date">Briefing del día</div>
-        <h2 id="brief-title">Sesgo diario según técnico y fundamental</h2>
+        <h2 id="brief-title">Sesgo diario: 60% fundamental, 30% técnico, 10% sentimiento</h2>
+        <div class="small muted">Se actualiza de lunes a viernes a las 7:50, 11:20 y 16:20 (hora de Madrid)</div>
       </div>
       <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
     </div>
     <div id="brief-empty" class="banner info" hidden>Todavía no hay briefing guardado. Se genera cada día laborable por la mañana; mientras tanto puedes pegar noticias abajo y pedir el sesgo a la IA.</div>
     <div class="grid g2" id="pair-cards"></div>
+    <div class="grid g2">
+      <div class="panel">
+        <div class="panel-head"><h3>Evolución del % durante el día</h3><span class="muted small">Probabilidad de subida</span></div>
+        <div class="tablebox"><table id="brief-updates"></table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>Últimos días</h3><span class="muted small" id="brief-hit"></span></div>
+        <div class="tablebox" style="max-height:300px"><table id="brief-history"></table></div>
+      </div>
+    </div>
     <div class="panel">
       <h3>Qué mueve el mercado hoy</h3>
       <p id="brief-summary" style="margin:0;max-width:80ch"></p>
@@ -1004,12 +1024,23 @@ function renderBriefing() {
       <div class="price num">${esc(d.price ?? "")}</div>
       <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
       ${out}
-      <p style="margin:0">${esc(d.technical || "")}</p>
+      ${d.scores ? `<div class="mix">${[["fundamental", "Fundamental · 60%"], ["tecnico", "Técnico · 30%"], ["sentimiento", "Sentimiento · 10%"]].map(([k, l]) => { const v = Math.max(-1, Math.min(1, Number(d.scores[k]) || 0));
+        return `<div class="mix-row"><span>${l}</span><div class="dv" role="img" aria-label="${l}: ${v.toFixed(2)}"><i class="${v >= 0 ? "p" : "n"}" style="width:${Math.abs(v) * 50}%"></i></div><span class="num small ${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(2)}</span></div>`; }).join("")}</div>` : ""}
+      ${d.fundamental ? `<p style="margin:0"><b>Fundamental:</b> ${esc(d.fundamental)}</p>` : ""}
+      ${d.drivers?.length ? `<ul class="drivers">${d.drivers.map(x => `<li><span class="ar ${x.efecto === "+" ? "pos" : x.efecto === "-" ? "neg" : "muted"}">${x.efecto === "+" ? "↑" : x.efecto === "-" ? "↓" : "·"}</span><span><b>${esc(x.factor)}</b>${x.tipo ? ` <span class="muted small">(${esc(x.tipo)})</span>` : ""}: ${esc(x.explicacion || "")}</span></li>`).join("")}</ul>` : ""}
+      <p style="margin:0"><b>Técnico:</b> ${esc(d.technical || "")}</p>
       <dl class="levels">${Object.entries(d.levels || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       ${d.invalidation ? `<p class="small muted" style="margin:0"><b>Invalida el escenario:</b> ${esc(d.invalidation)}</p>` : ""}
     </div>`;
   }).join("");
   $("#brief-summary").textContent = b.summary || "";
+  const ups = b.updates || [];
+  table($("#brief-updates"), [{h: "Hora", f: u => u.hora}, {h: "EURUSD ↑", n: 1, f: u => u.EURUSD == null ? "—" : Math.round(100 * u.EURUSD) + "%"},
+    {h: "DXY ↑", n: 1, f: u => u.DXY == null ? "—" : Math.round(100 * u.DXY) + "%"}, {h: "Qué cambió", f: u => u.motivo || ""}], ups);
+  const hist = bs.slice(0, 30);
+  table($("#brief-history"), [{h: "Día", f: x => x.date},
+    ...["EURUSD", "DXY"].flatMap(p => [{h: p + " ↑", n: 1, f: x => x.pairs?.[p] ? Math.round(100 * x.pairs[p].prob_up) + "%" : "—"},
+      {h: "Resultado", html: 1, f: x => { const o = x.pairs?.[p]?.outcome; return !o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`; }}])], hist);
   $("#brief-news").innerHTML = (b.news || []).map(n => `<article>
       <div class="when">${esc(n.time || "")}<br>${esc(n.currency || "")}</div>
       <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.status ? `<span class="pill ${n.status === "Publicado" ? "" : "warn"}">${esc(n.status)}</span>` : ""}</div>
@@ -1021,6 +1052,7 @@ function renderBriefing() {
   const evals = bs.flatMap(x => ["EURUSD", "DXY"].map(p => x.pairs?.[p]?.outcome).filter(o => o && typeof o.hit === "boolean"));
   $("#brief-accuracy").innerHTML = evals.length ? `<span class="num">${evals.filter(o => o.hit).length}/${evals.length}</span> aciertos de dirección (${(100 * evals.filter(o => o.hit).length / evals.length).toFixed(0)}%). Cuantos más días se registren, más fiable es esta cifra.`
     : "Aún no hay días cerrados para medir el acierto. Cada mañana se comprueba si el sesgo del día anterior acertó.";
+  $("#brief-hit").textContent = evals.length ? `${evals.filter(o => o.hit).length} de ${evals.length} acertados` : "";
 }
 $("#brief-picker").addEventListener("change", renderBriefing);
 
@@ -1060,6 +1092,7 @@ Noticias y datos que ha leído el trader hoy:
 ${txt.slice(0, 8000)}
 
 Para cada noticia relevante: resumen de 1-2 frases y "por este motivo lo lógico es que EURUSD suba/baje y el DXY suba/baje".
+Pondera así: 60% fundamental (expectativas de tipos Fed vs BCE, diferencial de bonos a 2 años, sorpresas en los datos, discursos de bancos centrales, geopolítica), 30% técnico y 10% sentimiento de mercado.
 Después da el sesgo final con un porcentaje aproximado de que EURUSD cierre hoy al alza o a la baja, y lo mismo para el DXY (recuerda: correlación inversa, el euro pesa ~57,6% en el DXY). Sé prudente: rara vez por encima del 70%. Termina con qué invalidaría el escenario. Sin tablas.`, {signal: pasteCtl.signal}).finally(() => $("#paste-stop").hidden = true);
 });
 $("#paste-stop").addEventListener("click", () => pasteCtl?.abort());

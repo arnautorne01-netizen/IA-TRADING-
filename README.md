@@ -22,7 +22,7 @@ Asistente personal de trading que:
 `web/bitacora.html` es la versión web, publicada en claude.ai: https://claude.ai/artifact/CpdChxZuQLpMxdAjCdZSfQ
 
 - El journal se guarda en tu cuenta (privado) y el análisis con IA usa tu cuenta de Claude, sin claves de API.
-- El briefing diario (sesgo técnico + fundamental, noticias y % de subida/bajada) se genera cada día laborable a las 7:50 (Madrid) con una tarea programada que busca las noticias en internet y lo guarda en la página. Al día siguiente comprueba si acertó.
+- El sesgo y el % de subida/bajada se calculan con 60% fundamental, 30% técnico y 10% sentimiento. Se genera cada día laborable a las 7:50 (Madrid) y se actualiza a las 11:20 y a las 16:20 con tareas programadas que buscan las noticias en internet. Cada mañana se comprueba si el día anterior acertó.
 
 ## Instalación (versión Python)
 
@@ -77,7 +77,7 @@ python -m trading_ai.cli bias [--ai]      # sesgo del día de EURUSD y DXY
 - **Win rate**: ganadas / (ganadas + perdidas), sin contar los BE.
 - **Lift de una confluencia**: el WR con esa confluencia menos el WR sin ella.
 - **Pérdida evitable**: una pérdida con 2 o más señales de alerta de proceso.
-- **Sesgo**: 55% técnico (cada par se ajusta con el inverso del otro, por la correlación EURUSD/DXY), 30% sorpresas de datos publicados y 15% titulares. Se convierte en probabilidad con una logística acotada al 20-80% y, si pides el briefing de IA, se mezcla con la probabilidad que estima Claude.
+- **Sesgo**: 60% fundamental (sorpresas de datos publicados), 30% técnico (cada par se ajusta con el inverso del otro, por la correlación EURUSD/DXY) y 10% titulares. Se convierte en probabilidad con una logística acotada al 20-80% y, si pides el briefing de IA, se mezcla con la probabilidad que estima Claude.
 
 ## Estructura
 
