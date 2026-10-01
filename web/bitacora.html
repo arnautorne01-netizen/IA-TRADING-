@@ -166,6 +166,12 @@ details summary{cursor:pointer;font-weight:600}
         <div class="tablebox" style="max-height:300px"><table id="brief-history"></table></div>
       </div>
     </div>
+    <div class="panel" id="vol-panel">
+      <div class="panel-head"><h3>Volumen y posicionamiento</h3><span class="muted small">Futuros CME/ICE y COT de la CFTC</span></div>
+      <p class="muted small" style="margin:0">En forex al contado no hay volumen centralizado (lo que ve tu bróker es volumen de ticks). El volumen real sale de los futuros: Euro FX (6E) en la CME y el DXY en ICE.</p>
+      <div class="grid g3" id="vol-cards"></div>
+      <div id="vol-cot"></div>
+    </div>
     <div class="panel">
       <h3>Qué mueve el mercado hoy</h3>
       <p id="brief-summary" style="margin:0;max-width:80ch"></p>
@@ -283,7 +289,7 @@ details summary{cursor:pointer;font-weight:600}
       <div class="panel-head"><h3>Resultado agrupado</h3>
         <select id="f-group" style="width:auto">
           <option value="confluences">Por confluencia</option><option value="session">Por sesión</option><option value="setup">Por setup</option>
-          <option value="hour">Por hora</option><option value="weekday">Por día</option><option value="emotion">Por emoción</option>
+          <option value="hour">Por hora</option><option value="weekday">Por día</option><option value="emotion">Por emoción</option><option value="volume">Por volumen</option>
           <option value="mistakes">Por error</option><option value="timeframe">Por temporalidad</option><option value="nConf">Por nº de confluencias</option></select></div>
       <div class="tablebox"><table id="f-table"></table></div>
     </div>
@@ -322,6 +328,7 @@ details summary{cursor:pointer;font-weight:600}
         <label>Beneficio en € (opcional)<input id="t-pnl" inputmode="decimal"></label>
         <label>¿Seguiste el plan?<select id="t-plan"><option value="true">Sí</option><option value="false">No</option></select></label>
         <label>Emoción al entrar<select id="t-emotion"></select></label>
+        <label>Volumen al entrar<select id="t-vol"><option value="">No lo miré</option><option>Alto</option><option>Normal</option><option>Bajo</option></select></label>
         <label>¿Noticia de alto impacto cerca?<select id="t-news"><option value="false">No</option><option value="true">Sí</option></select></label>
       </div>
       <div class="field">Confluencias presentes<div class="chips" id="t-confs"></div>
@@ -438,7 +445,7 @@ details summary{cursor:pointer;font-weight:600}
 const SESSIONS = ["Londres","Nueva York","Overlap Londres-NY","Asia","Fuera de sesión"];
 const EMOTIONS = ["Tranquilo","Confiado","Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"];
 const NEG_EMO = new Set(["Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"]);
-const CONFLUENCES = ["Sesgo diario a favor","Sesgo H4 a favor","Liquidez barrida","Order Block","FVG","BOS / CHoCH","Soporte/Resistencia","Zona premium/discount","Killzone","Divergencia RSI","EMA 200 a favor","Noticia a favor","Patrón de velas","Nivel psicológico","PDH/PDL","Asia High/Low","Correlación DXY confirma"];
+const CONFLUENCES = ["Sesgo diario a favor","Sesgo H4 a favor","Liquidez barrida","Order Block","FVG","BOS / CHoCH","Soporte/Resistencia","Zona premium/discount","Killzone","Divergencia RSI","EMA 200 a favor","Noticia a favor","Patrón de velas","Nivel psicológico","PDH/PDL","Asia High/Low","Correlación DXY confirma","Volumen confirma"];
 const MISTAKES = ["Entrada anticipada","Entrada tardía","Mover SL","Cerrar antes de TP","Sobreoperar","Revenge trading","FOMO","Contra sesgo","Operar en noticia","Riesgo excesivo","Sin confirmación"];
 const WEEKDAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const BE = 0.1;
@@ -512,6 +519,7 @@ function normalize(raw) {
   for (const k of ["session", "setup", "timeframe", "daily_bias", "emotion", "notes"]) t[k] = raw[k] == null ? "" : String(raw[k]).trim();
   t.confluences = tags(raw.confluences); t.mistakes = tags(raw.mistakes);
   t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
+  { const vv = String(raw.volume ?? raw.volumen ?? "").trim().toLowerCase(); t.volume = vv.startsWith("a") || vv.startsWith("h") ? "Alto" : vv.startsWith("n") ? "Normal" : vv.startsWith("b") || vv.startsWith("l") ? "Bajo" : ""; }
   t.ejemplo = !!raw.ejemplo;
   t.shots = [...new Set([...(Array.isArray(raw.shots) ? raw.shots : tags(raw.shots)), ...(raw.shot ? [String(raw.shot)] : [])].map(String).filter(Boolean))];
   t.ai_analysis = raw.ai_analysis ? String(raw.ai_analysis) : "";
@@ -805,7 +813,7 @@ function renderJournal() {
   kpis($("#j-kpis"), summary(ts));
   $("#j-equity").innerHTML = equitySVG(ts);
   const groups = [["Por mes", ts.map(t => ({...t, month: t.date.slice(0, 7)})), "month"], ["Por sesión", ts, "session"], ["Por setup", ts, "setup"],
-    ["Por día de la semana", ts, "weekday"], ["Por par y dirección", ts.map(t => ({...t, pd: t.pair + " " + t.direction})), "pd"], ["Por emoción", ts, "emotion"],
+    ["Por día de la semana", ts, "weekday"], ["Por par y dirección", ts.map(t => ({...t, pd: t.pair + " " + t.direction})), "pd"], ["Por emoción", ts, "emotion"], ["Por volumen al entrar", ts, "volume"],
     ["A favor o en contra del sesgo", ts.map(t => ({...t, al: t.aligned === true ? "A favor" : t.aligned === false ? "En contra" : "Neutral / sin dato"})), "al"]];
   $("#j-breakdowns").innerHTML = groups.map((g, i) => `<div class="panel"><h3>${g[0]}</h3><div class="tablebox"><table id="jb${i}"></table></div></div>`).join("");
   groups.forEach((g, i) => { const rows = breakdown(g[1], g[2]); if (g[2] === "month") rows.sort((a, b) => a.key.localeCompare(b.key)); table($("#jb" + i), statCols(g[0].replace("Por ", "").replace(/^./, c => c.toUpperCase())), rows); });
@@ -850,7 +858,7 @@ $("#a-only").addEventListener("change", renderAnalysis);
 // =====================================================================
 // Filtros
 // =====================================================================
-const FSEL = [["pair", "Par"], ["direction", "Dirección"], ["session", "Sesión"], ["setup", "Setup"], ["result", "Resultado"], ["emotion", "Emoción"], ["weekday", "Día"],
+const FSEL = [["volume", "Volumen al entrar"], ["pair", "Par"], ["direction", "Dirección"], ["session", "Sesión"], ["setup", "Setup"], ["result", "Resultado"], ["emotion", "Emoción"], ["weekday", "Día"],
   ["followed_plan", "Plan seguido"], ["news_nearby", "Noticia cerca"], ["aligned", "A favor del sesgo"], ["mistake", "Con este error"]];
 function renderFilters() {
   const ts = state.trades, f = state.filter;
@@ -928,7 +936,7 @@ function fillForm(t) {
   set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
   set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
-  set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
+  set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
   state.formShots = [...(t.shots || [])]; state.formAI = t.ai_analysis || ""; $("#t-shot").value = "";
   $("#t-ai-out").innerHTML = state.formAI ? "<b>Análisis de la IA:</b> " + mdLite(state.formAI) : ""; renderThumbs();
   renderForm();
@@ -947,7 +955,7 @@ $("#t-form").addEventListener("submit", async e => {
   const hasPrices = num(v("#t-entry")) != null && num(v("#t-sl")) != null && num(v("#t-exit")) != null;
   if (!hasPrices && num(v("#t-r")) == null) { $("#t-msg").innerHTML = `<span class="neg">Pon entrada, stop y salida, o el R conseguido.</span>`; return; }
   const raw = {date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
-    daily_bias: v("#t-bias"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
+    daily_bias: v("#t-bias"), volume: v("#t-vol"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
     followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
     confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
   $("#t-save").disabled = true;
@@ -971,7 +979,7 @@ $("#t-form").addEventListener("submit", async e => {
 });
 
 // CSV
-const ALIASES = {fecha: "date", hora: "time", par: "pair", simbolo: "pair", symbol: "pair", "dirección": "direction", direccion: "direction", tipo: "direction", side: "direction",
+const ALIASES = {volumen: "volume", fecha: "date", hora: "time", par: "pair", simbolo: "pair", symbol: "pair", "dirección": "direction", direccion: "direction", tipo: "direction", side: "direction",
   "sesión": "session", sesion: "session", entrada: "entry", sl: "stop_loss", tp: "take_profit", salida: "exit_price", exit: "exit_price", r_multiple: "r",
   resultado: "result", confluencias: "confluences", sesgo: "daily_bias", bias: "daily_bias", plan: "followed_plan", "emoción": "emotion", emocion: "emotion",
   noticia: "news_nearby", errores: "mistakes", notas: "notes", beneficio: "pnl", profit: "pnl", temporalidad: "timeframe"};
@@ -1003,7 +1011,7 @@ $("#csv-file").addEventListener("change", async e => {
   e.target.value = "";
 });
 $("#csv-export").addEventListener("click", async () => {
-  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "news_nearby", "mistakes", "notes"];
+  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
   const q = v => { const s = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [cols.join(","), ...state.trades.map(t => cols.map(c => q(t[c])).join(","))].join("\n");
   const dl = await use("downloads");
@@ -1053,6 +1061,20 @@ function renderBriefing() {
     </div>`;
   }).join("");
   $("#brief-summary").textContent = b.summary || "";
+  const V = b.volumen;
+  $("#vol-panel").hidden = !V;
+  if (V) {
+    const sig = x => x === "confirma" ? "up" : x === "diverge" ? "down" : "";
+    $("#vol-cards").innerHTML = [["EURUSD", "Euro FX (6E)"], ["DXY", "Futuros DXY"]].map(([k, l]) => { const d = V[k]; if (!d) return "";
+      return `<div class="panel" style="background:var(--bg)"><div class="panel-head"><b>${l}</b>${d.senal ? `<span class="pill ${sig(d.senal)}">${d.senal === "confirma" ? "Confirma el movimiento" : d.senal === "diverge" ? "No confirma" : "Neutral"}</span>` : ""}</div>
+        <dl class="levels">${d.volumen ? `<dt>Volumen</dt><dd>${esc(d.volumen)}</dd>` : ""}${d.interes_abierto ? `<dt>Interés abierto</dt><dd>${esc(d.interes_abierto)}</dd>` : ""}</dl>
+        <p class="small" style="margin:0">${esc(d.lectura || "")}</p></div>`; }).join("")
+      + (V.niveles ? `<div class="panel" style="background:var(--bg)"><b>Zonas de volumen</b><p class="small" style="margin:0">${esc(V.niveles)}</p></div>` : "");
+    const C = V.cot;
+    $("#vol-cot").innerHTML = C ? `<div class="label">COT (posiciones a ${esc(C.fecha || "—")})</div>
+      <dl class="levels">${C.gestores ? `<dt>Gestores de fondos</dt><dd style="font-family:var(--f-body)">${esc(C.gestores)}</dd>` : ""}${C.especuladores ? `<dt>Fondos apalancados</dt><dd style="font-family:var(--f-body)">${esc(C.especuladores)}</dd>` : ""}${C.cambio ? `<dt>Cambio semanal</dt><dd style="font-family:var(--f-body)">${esc(C.cambio)}</dd>` : ""}</dl>
+      <p class="small" style="margin:0">${esc(C.lectura || "")}</p>` : "";
+  }
   const ups = b.updates || [];
   table($("#brief-updates"), [{h: "Hora", f: u => u.hora}, {h: "EURUSD ↑", n: 1, f: u => u.EURUSD == null ? "—" : Math.round(100 * u.EURUSD) + "%"},
     {h: "DXY ↑", n: 1, f: u => u.DXY == null ? "—" : Math.round(100 * u.DXY) + "%"}, {h: "Qué cambió", f: u => u.motivo || ""}], ups);
@@ -1172,7 +1194,7 @@ function analysisPrompt(extra) {
 ${stratTxt()}
 Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD o DXY (pueden ser antes de entrar, durante y el resultado).
 ${extra || ""}
-Analízala como un trader profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
+Analízala como un trader profesional: contexto y tendencia, volumen si hay un indicador visible (picos en el barrido o en la ruptura, volumen decreciente en el retroceso), estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
 Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
@@ -1180,7 +1202,7 @@ Sesiones válidas: ${SESSIONS.join(" | ")}
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
 {"pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null",
-"setup":"nombre corto del modelo de entrada","confluences":["..."],
+"setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null (solo si se ve un indicador de volumen en la imagen)",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
 "estrategia":"2-3 frases: qué estrategia/modelo refleja esta operación${state.profile ? " y cuánto encaja con su estrategia detectada" : ""}"}`;
 }
@@ -1188,7 +1210,7 @@ function applyAnalysis(a) {
   const setIf = (id, v) => { if (v != null && v !== "" && !$(id).value) $(id).value = v; };
   const setSel = (id, v, ok) => { if (v && ok.includes(v)) $(id).value = v; };
   setSel("#t-pair", a.pair, ["EURUSD", "DXY"]); setSel("#t-dir", a.direction, ["Long", "Short"]);
-  setSel("#t-tf", a.timeframe, ["M1", "M5", "M15", "M30", "H1", "H4"]); setSel("#t-session", a.session, SESSIONS);
+  setSel("#t-tf", a.timeframe, ["M1", "M5", "M15", "M30", "H1", "H4"]); if (!$("#t-vol").value) setSel("#t-vol", a.volume, ["Alto", "Normal", "Bajo"]); setSel("#t-session", a.session, SESSIONS);
   for (const k of [["#t-entry", "entry"], ["#t-sl", "stop_loss"], ["#t-tp", "take_profit"], ["#t-exit", "exit_price"]]) setIf(k[0], num(a[k[1]]));
   setIf("#t-setup", a.setup);
   const chips = [...document.querySelectorAll("#t-confs .chip")], extra = [];
@@ -1289,7 +1311,7 @@ function fingerprint(ts) {
   return [
     ["Pares", top("pair")], ["Dirección", `${longs} largos / ${ts.length - longs} cortos`], ["Sesiones que más operas", top("session")],
     ["Sesión más rentable", best("session")], ["Setups que más usas", top("setup")], ["Setup más rentable", best("setup")],
-    ["Tu mejor combinación", combo], ["Temporalidad", top("timeframe")],
+    ["Tu mejor combinación", combo], ["Temporalidad", top("timeframe")], ["Volumen al entrar", best("volume")],
     ["Horas de entrada", hours.length ? `de ${Math.min(...hours)}h a ${Math.max(...hours)}h, la mayoría a las ${median(hours)}h` : "—"],
     ["Confluencias que más usas", top("confluences", 5)], ["Confluencias por operación", (mean(ts.map(t => t.nConf)) ?? 0).toFixed(1) + " de media"],
     ["R:R planeado", rr.length ? `${mean(rr).toFixed(2)} de media` : "—"],
@@ -1444,7 +1466,7 @@ async function askAI(out, prompt, opts = {}) {
   }
 }
 function compactCSV(ts, max = 400) {
-  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "news_nearby", "confluences", "mistakes", "notes", "analisis_ia"];
+  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "confluences", "mistakes", "notes", "analisis_ia"];
   return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = c === "analisis_ia" ? (t.ai_analysis || "").slice(0, 500) : t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
 }
 const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados.`;
