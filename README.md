@@ -17,7 +17,14 @@ Asistente personal de trading que:
 
 > ⚠️ Las probabilidades son estimaciones heurísticas (limitadas al 20-80% a propósito), no garantías ni consejo financiero. La app guarda un histórico del sesgo diario y mide su acierto real para que sepas cuánto fiarte.
 
-## Instalación
+## Versión web
+
+`web/bitacora.html` es la versión web, publicada en claude.ai: https://claude.ai/artifact/CpdChxZuQLpMxdAjCdZSfQ
+
+- El journal se guarda en tu cuenta (privado) y el análisis con IA usa tu cuenta de Claude, sin claves de API.
+- El briefing diario (sesgo técnico + fundamental, noticias y % de subida/bajada) se genera cada día laborable a las 7:50 (Madrid) con una tarea programada que busca las noticias en internet y lo guarda en la página. Al día siguiente comprueba si acertó.
+
+## Instalación (versión Python)
 
 ```bash
 pip install -r requirements.txt

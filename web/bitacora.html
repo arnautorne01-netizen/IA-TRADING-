@@ -1,0 +1,1085 @@
+<title>Bitácora EURUSD·DXY</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: mesa de trading — barra de pestañas arriba, paneles en rejilla que se apilan en móvil.
+   Paleta: tinta azul marino + azul euro como acento; verde/rojo solo para semántica (sube/baja). */
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#14213a; --muted:#5b6880; --line:#d5dbe5;
+  --accent:#2347b3; --accent-soft:#e4eaf8; --up:#13795b; --up-soft:#e2f3ec; --down:#b3261e; --down-soft:#fbe6e4;
+  --warn:#9a6200; --warn-soft:#fbf0d9;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1522; --panel:#172033; --ink:#e3e9f4; --muted:#93a0b8; --line:#2a3650;
+  --accent:#7d9cf5; --accent-soft:#1f2b4a; --up:#4cc79a; --up-soft:#13302a; --down:#f2867c; --down-soft:#3a1c1d;
+  --warn:#e8b45c; --warn-soft:#352a14; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1522; --panel:#172033; --ink:#e3e9f4; --muted:#93a0b8; --line:#2a3650;
+  --accent:#7d9cf5; --accent-soft:#1f2b4a; --up:#4cc79a; --up-soft:#13302a; --down:#f2867c; --down-soft:#3a1c1d;
+  --warn:#e8b45c; --warn-soft:#352a14; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:0 48px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.15}
+h2{font-size:1.45rem;font-weight:600}
+h3{font-size:1.05rem;font-weight:600}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+a{color:var(--accent)}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-block:14px 8px}
+.brand h1{font-size:1.6rem;font-weight:700;letter-spacing:.01em}
+.brand h1 span{color:var(--accent)}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.tabs button{font:600 .92rem var(--f-display);letter-spacing:.02em;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:8px 12px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabs button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.view{display:flex;flex-direction:column;gap:20px;padding-top:22px}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.label{font:600 .72rem var(--f-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.kpi .v{font:600 1.35rem var(--f-mono);font-variant-numeric:tabular-nums}
+.pos{color:var(--up)} .neg{color:var(--down)}
+.pill{display:inline-flex;align-items:center;gap:4px;font:600 .75rem var(--f-body);padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.pill.up{background:var(--up-soft);color:var(--up)} .pill.down{background:var(--down-soft);color:var(--down)} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.banner{padding:10px 14px;border-radius:var(--r);background:var(--warn-soft);color:var(--warn);font-size:.9rem}
+.banner.info{background:var(--accent-soft);color:var(--accent)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 .72rem var(--f-body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--panel);position:sticky;top:0;white-space:nowrap}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+button.btn{font:600 .9rem var(--f-body);border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:var(--r);cursor:pointer}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+button.btn.danger{color:var(--down)}
+button.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+form.grid label,.field{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--muted);min-width:0}
+input,select,textarea{font:15px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;width:100%}
+textarea{min-height:70px;resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 .82rem var(--f-body);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:4px 10px;border-radius:999px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.prob{display:flex;height:34px;border-radius:var(--r);overflow:hidden;font:600 .9rem var(--f-mono)}
+.prob div{display:flex;align-items:center;padding-inline:10px;white-space:nowrap}
+.prob .u{background:var(--up-soft);color:var(--up);justify-content:flex-start}
+.prob .d{background:var(--down-soft);color:var(--down);justify-content:flex-end}
+.pair-card .price{font:600 1.9rem var(--f-mono)}
+.levels{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.88rem}
+.levels dt{color:var(--muted)} .levels dd{margin:0;font-family:var(--f-mono)}
+.news{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
+.news article{display:grid;grid-template-columns:88px 1fr;gap:4px 14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.news .when{font:500 .82rem var(--f-mono);color:var(--muted)}
+.news .data{font:500 .82rem var(--f-mono)}
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar-row{display:grid;grid-template-columns:minmax(110px,190px) 1fr auto;gap:10px;align-items:center;font-size:.85rem}
+.bar-track{position:relative;height:16px;background:var(--bg);border-radius:3px;overflow:hidden}
+.bar-track i{position:absolute;left:0;height:8px;border-radius:2px}
+.bar-track i.w{top:0;background:var(--up)} .bar-track i.l{bottom:0;background:var(--down)}
+.legend{display:flex;gap:14px;font-size:.8rem;color:var(--muted)}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+ul.clean{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.checklist li{list-style:none;margin-left:-18px}
+.checklist li::before{content:"☐ ";color:var(--accent);font-weight:700}
+.ai-out{white-space:pre-wrap;line-height:1.6;max-width:75ch}
+.ai-out h4{font-family:var(--f-display);font-size:1.02rem;margin:14px 0 4px}
+.chat{display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto}
+.msg{padding:10px 12px;border-radius:var(--r);max-width:85%;white-space:pre-wrap}
+.msg.user{align-self:flex-end;background:var(--accent-soft)}
+.msg.ai{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+svg text{fill:var(--muted);font:11px var(--f-mono)}
+.equity path.line{fill:none;stroke:var(--accent);stroke-width:2}
+.equity path.area{fill:var(--accent-soft)}
+.equity line.grid{stroke:var(--line)}
+.equity line.zero{stroke:var(--muted);stroke-dasharray:3 3}
+details summary{cursor:pointer;font-weight:600}
+@media (max-width:560px){.news article{grid-template-columns:1fr}.bar-row{grid-template-columns:1fr auto}.bar-row .bar-track{grid-column:1/-1;order:3}}
+@media (prefers-reduced-motion:no-preference){.panel{transition:border-color .2s}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <h1>Bitácora <span>EURUSD·DXY</span></h1>
+      <span class="muted small" id="who">Cargando tu journal…</span>
+    </div>
+    <nav class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-tab="hoy" aria-selected="true">Sesgo de hoy</button>
+      <button role="tab" data-tab="journal" aria-selected="false">Journal y WR</button>
+      <button role="tab" data-tab="analisis" aria-selected="false">Buenas vs malas</button>
+      <button role="tab" data-tab="filtros" aria-selected="false">Filtros</button>
+      <button role="tab" data-tab="nueva" aria-selected="false">Registrar</button>
+      <button role="tab" data-tab="coach" aria-selected="false">Coach IA</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="global-banner" hidden class="banner" style="margin-top:16px"></div>
+
+  <!-- ====================== HOY ====================== -->
+  <section class="view" id="view-hoy">
+    <div class="panel-head">
+      <div>
+        <div class="label" id="brief-date">Briefing del día</div>
+        <h2 id="brief-title">Sesgo diario según técnico y fundamental</h2>
+      </div>
+      <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
+    </div>
+    <div id="brief-empty" class="banner info" hidden>Todavía no hay briefing guardado. Se genera cada día laborable por la mañana; mientras tanto puedes pegar noticias abajo y pedir el sesgo a la IA.</div>
+    <div class="grid g2" id="pair-cards"></div>
+    <div class="panel">
+      <h3>Qué mueve el mercado hoy</h3>
+      <p id="brief-summary" style="margin:0;max-width:80ch"></p>
+    </div>
+    <div class="grid g2">
+      <div class="panel">
+        <div class="panel-head"><h3>Noticias de alto impacto</h3><span class="muted small">Hora de Madrid</span></div>
+        <div class="news" id="brief-news"></div>
+      </div>
+      <div class="panel">
+        <h3>Riesgos y horas a evitar</h3>
+        <ul class="clean" id="brief-risks"></ul>
+        <h3>Fiabilidad del sesgo</h3>
+        <div id="brief-accuracy" class="small"></div>
+        <details><summary class="small">Fuentes del briefing</summary><ul class="clean small" id="brief-sources"></ul></details>
+      </div>
+    </div>
+    <div class="grid g2">
+      <div class="panel">
+        <h3>Evalúa una noticia</h3>
+        <p class="muted small" style="margin:0">Cuando salga un dato, escríbelo y te digo hacia dónde es lógico que vayan EURUSD y DXY.</p>
+        <div class="grid g3">
+          <label class="field">Divisa<select id="ev-cur"><option>USD</option><option>EUR</option></select></label>
+          <label class="field">Evento<select id="ev-type"></select></label>
+          <label class="field">Previsión<input id="ev-fc" placeholder="54.8"></label>
+          <label class="field">Real<input id="ev-act" placeholder="56.1"></label>
+        </div>
+        <div class="row"><button class="btn primary" id="ev-go">Evaluar</button><button class="btn" id="ev-ai" data-ai>Explicación con IA</button></div>
+        <div id="ev-out" class="ai-out"></div>
+      </div>
+      <div class="panel">
+        <h3>Sesgo con tus propias noticias</h3>
+        <p class="muted small" style="margin:0">Pega titulares, datos o lo que hayas leído hoy. La IA lo combina con el briefing y te da un % de subida/bajada.</p>
+        <textarea id="paste-news" placeholder="Ej: Lagarde dice que el BCE está listo para subir tipos. ISM manufacturero 52.1 vs 54.8 previsto…"></textarea>
+        <div class="row"><button class="btn primary" id="paste-go" data-ai>Calcular sesgo</button><button class="btn" id="paste-stop" hidden>Parar</button></div>
+        <div id="paste-out" class="ai-out"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== JOURNAL ====================== -->
+  <section class="view" id="view-journal" hidden>
+    <div class="panel-head">
+      <h2>Journal y win rate</h2>
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:6px">Par
+          <select id="j-pair" style="width:auto"><option value="">Todos</option><option>EURUSD</option><option>DXY</option></select></label>
+      </div>
+    </div>
+    <div id="j-example" class="banner info" hidden></div>
+    <div class="kpis" id="j-kpis"></div>
+    <div class="panel">
+      <div class="panel-head"><h3>Curva de capital</h3><span class="muted small">R acumulado operación a operación</span></div>
+      <div id="j-equity"></div>
+    </div>
+    <div class="grid g2" id="j-breakdowns"></div>
+    <div class="panel">
+      <div class="panel-head"><h3>Todas las operaciones</h3><span class="muted small" id="j-count"></span></div>
+      <div class="tablebox" style="max-height:520px"><table id="j-table"></table></div>
+    </div>
+  </section>
+
+  <!-- ====================== ANÁLISIS ====================== -->
+  <section class="view" id="view-analisis" hidden>
+    <h2>¿Por qué ganan tus buenas y fallan tus malas?</h2>
+    <div id="a-empty" class="banner" hidden>Necesitas al menos 5 operaciones cerradas para este análisis.</div>
+    <div class="panel"><h3>Conclusiones</h3><ul class="clean" id="a-concl"></ul></div>
+    <div class="grid g2">
+      <div class="panel">
+        <h3>Por qué fallan tus malas</h3>
+        <p class="muted small" style="margin:0">Factores que aparecen más en perdedoras que en ganadoras.</p>
+        <div class="tablebox"><table id="a-losses"></table></div>
+        <div class="small" id="a-mistakes"></div>
+      </div>
+      <div class="panel">
+        <h3>Qué tienen en común tus buenas</h3>
+        <p class="muted small" style="margin:0">Rasgos más frecuentes en ganadoras.</p>
+        <div class="tablebox"><table id="a-wins"></table></div>
+        <div>
+          <div class="label">Tu checklist A+</div>
+          <ul class="clean checklist" id="a-check"></ul>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Confluencias que más ves en tus buenas operaciones</h3>
+        <div class="legend"><span><b style="background:var(--up)"></b>% en ganadoras</span><span><b style="background:var(--down)"></b>% en perdedoras</span></div></div>
+      <div class="bars" id="a-bars"></div>
+      <div class="tablebox"><table id="a-lift"></table></div>
+    </div>
+    <div class="grid g2">
+      <div class="panel"><h3>Mejores parejas de confluencias</h3><div class="tablebox" style="max-height:360px"><table id="a-combos"></table></div></div>
+      <div class="panel"><h3>¿Y si hubieras evitado…?</h3><div class="tablebox"><table id="a-whatif"></table></div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Diagnóstico operación por operación</h3>
+        <select id="a-only" style="width:auto"><option value="Loss">Perdedoras</option><option value="Win">Ganadoras</option><option value="">Todas</option></select></div>
+      <div class="tablebox" style="max-height:520px"><table id="a-trades"></table></div>
+    </div>
+  </section>
+
+  <!-- ====================== FILTROS ====================== -->
+  <section class="view" id="view-filtros" hidden>
+    <h2>Filtra tus operaciones</h2>
+    <div class="panel">
+      <div class="grid g3" id="f-selects"></div>
+      <div class="field">Con TODAS estas confluencias<div class="chips" id="f-all"></div></div>
+      <div class="field">Con ALGUNA de estas<div class="chips" id="f-any"></div></div>
+      <div class="field">SIN ninguna de estas<div class="chips" id="f-none"></div></div>
+      <div class="row"><button class="btn" id="f-reset">Quitar filtros</button></div>
+    </div>
+    <div class="kpis" id="f-kpis"></div>
+    <div id="f-warn" class="banner" hidden>Muestra pequeña (menos de 20 operaciones): las conclusiones son poco fiables.</div>
+    <div class="panel">
+      <div class="panel-head"><h3>Resultado agrupado</h3>
+        <select id="f-group" style="width:auto">
+          <option value="confluences">Por confluencia</option><option value="session">Por sesión</option><option value="setup">Por setup</option>
+          <option value="hour">Por hora</option><option value="weekday">Por día</option><option value="emotion">Por emoción</option>
+          <option value="mistakes">Por error</option><option value="timeframe">Por temporalidad</option><option value="nConf">Por nº de confluencias</option></select></div>
+      <div class="tablebox"><table id="f-table"></table></div>
+    </div>
+    <div class="panel"><h3>Operaciones filtradas</h3><div class="tablebox" style="max-height:480px"><table id="f-trades"></table></div></div>
+  </section>
+
+  <!-- ====================== REGISTRAR ====================== -->
+  <section class="view" id="view-nueva" hidden>
+    <h2>Registrar operaciones</h2>
+    <form class="panel" id="t-form">
+      <input type="hidden" id="t-id">
+      <div class="panel-head"><h3 id="t-form-title">Nueva operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
+      <div class="grid g3">
+        <label>Fecha<input type="date" id="t-date" required></label>
+        <label>Hora de entrada<input type="time" id="t-time"></label>
+        <label>Par<select id="t-pair"><option>EURUSD</option><option>DXY</option></select></label>
+        <label>Dirección<select id="t-dir"><option>Long</option><option>Short</option></select></label>
+        <label>Sesión<select id="t-session"></select></label>
+        <label>Setup<input id="t-setup" placeholder="Barrido + FVG" list="setups"></label>
+        <label>Temporalidad<select id="t-tf"><option>M1</option><option selected>M5</option><option>M15</option><option>M30</option><option>H1</option><option>H4</option></select></label>
+        <label>Sesgo diario que tenías<select id="t-bias"><option>Alcista</option><option>Bajista</option><option>Neutral</option></select></label>
+        <label>Entrada<input id="t-entry" inputmode="decimal" placeholder="1.13250"></label>
+        <label>Stop loss<input id="t-sl" inputmode="decimal"></label>
+        <label>Take profit<input id="t-tp" inputmode="decimal"></label>
+        <label>Precio de salida<input id="t-exit" inputmode="decimal"></label>
+        <label>R conseguido (si no pones precios)<input id="t-r" inputmode="decimal" placeholder="2 / -1 / 0"></label>
+        <label>Beneficio en € (opcional)<input id="t-pnl" inputmode="decimal"></label>
+        <label>¿Seguiste el plan?<select id="t-plan"><option value="true">Sí</option><option value="false">No</option></select></label>
+        <label>Emoción al entrar<select id="t-emotion"></select></label>
+        <label>¿Noticia de alto impacto cerca?<select id="t-news"><option value="false">No</option><option value="true">Sí</option></select></label>
+      </div>
+      <div class="field">Confluencias presentes<div class="chips" id="t-confs"></div>
+        <input id="t-conf-extra" placeholder="Otras confluencias, separadas por comas"></div>
+      <div class="field">Errores cometidos<div class="chips" id="t-mistakes"></div></div>
+      <label class="field">Notas<textarea id="t-notes" placeholder="Qué viste, por qué entraste, cómo gestionaste"></textarea></label>
+      <div class="row"><button class="btn primary" type="submit" id="t-save">Guardar operación</button><span id="t-msg" class="small"></span></div>
+    </form>
+    <datalist id="setups"></datalist>
+    <div class="grid g2">
+      <div class="panel">
+        <h3>Importar CSV</h3>
+        <p class="muted small" style="margin:0">Columnas mínimas: <span class="mono">date, pair, direction</span> y precios (<span class="mono">entry, stop_loss, take_profit, exit_price</span>) o <span class="mono">r</span>. También vale en español: fecha, par, dirección, entrada, sl, tp, salida, confluencias, sesgo, errores, notas.</p>
+        <input type="file" id="csv-file" accept=".csv,text/csv">
+        <div id="csv-msg" class="small"></div>
+      </div>
+      <div class="panel">
+        <h3>Exportar y limpiar</h3>
+        <div class="row">
+          <button class="btn" id="csv-export" hidden>Descargar CSV</button>
+          <button class="btn danger" id="del-examples" hidden>Borrar operaciones de ejemplo</button>
+        </div>
+        <div id="del-confirm" class="row" hidden><span class="small">¿Seguro? Se borrarán las operaciones de ejemplo.</span><button class="btn danger" id="del-yes">Sí, borrar</button><button class="btn" id="del-no">No</button></div>
+        <div id="exp-msg" class="small"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== COACH ====================== -->
+  <section class="view" id="view-coach" hidden>
+    <h2>Coach de trading con IA</h2>
+    <div id="ai-off" class="banner" hidden>El coach de IA no está disponible en esta vista (abre la página en claude.ai con tu cuenta). Todo lo demás funciona sin él.</div>
+    <div class="panel">
+      <div class="panel-head"><h3>Informe completo de tu journal</h3><span class="muted small" id="c-last"></span></div>
+      <input id="c-focus" placeholder="¿Algo concreto en lo que quieras que se centre? (opcional)">
+      <div class="row"><button class="btn primary" id="c-go" data-ai>Analizar mi journal</button><button class="btn" id="c-stop" hidden>Parar</button></div>
+      <div id="c-out" class="ai-out"></div>
+    </div>
+    <div class="panel">
+      <h3>Revisar una operación</h3>
+      <select id="c-trade"></select>
+      <div class="row"><button class="btn" id="c-review" data-ai>Revisar operación</button></div>
+      <div id="c-review-out" class="ai-out"></div>
+    </div>
+    <div class="panel">
+      <h3>Pregunta lo que quieras</h3>
+      <p class="muted small" style="margin:0">Ej: «¿Qué WR tengo en Londres con FVG y liquidez barrida?», «¿Pierdo más los lunes?», «¿Qué debería dejar de hacer?»</p>
+      <div class="chat" id="chat"></div>
+      <form class="row" id="chat-form"><input id="chat-in" placeholder="Escribe tu pregunta" style="flex:1;min-width:0"><button class="btn primary" data-ai>Enviar</button></form>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// =====================================================================
+// Configuración
+// =====================================================================
+const SESSIONS = ["Londres","Nueva York","Overlap Londres-NY","Asia","Fuera de sesión"];
+const EMOTIONS = ["Tranquilo","Confiado","Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"];
+const NEG_EMO = new Set(["Ansioso","FOMO","Frustrado","Venganza","Aburrido","Eufórico"]);
+const CONFLUENCES = ["Sesgo diario a favor","Sesgo H4 a favor","Liquidez barrida","Order Block","FVG","BOS / CHoCH","Soporte/Resistencia","Zona premium/discount","Killzone","Divergencia RSI","EMA 200 a favor","Noticia a favor","Patrón de velas","Nivel psicológico","PDH/PDL","Asia High/Low","Correlación DXY confirma"];
+const MISTAKES = ["Entrada anticipada","Entrada tardía","Mover SL","Cerrar antes de TP","Sobreoperar","Revenge trading","FOMO","Contra sesgo","Operar en noticia","Riesgo excesivo","Sin confirmación"];
+const WEEKDAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+const BE = 0.1;
+
+const NEG_FACTORS = {
+  contra_sesgo:"Operación en contra del sesgo diario", sin_plan:"No se siguió el plan de trading",
+  emocion_negativa:"Estado emocional negativo al entrar", noticia_cerca:"Entrada con noticia de alto impacto cerca",
+  pocas_confluencias:"Menos confluencias de las que tienen tus ganadoras", falta_clave:"No tenía ninguna de tus 3 confluencias más rentables",
+  rr_bajo:"R:R planeado bajo (< 1.5)", sesion_debil:"Sesión donde históricamente rindes peor", setup_debil:"Setup con expectativa negativa",
+  tras_perdida:"Entrada el mismo día tras una pérdida (posible revenge)", sobreoperar:"Más de 3 operaciones ese día", errores:"Marcaste errores de ejecución"};
+const POS_FACTORS = {
+  a_favor_sesgo:"A favor del sesgo diario", plan:"Plan seguido con disciplina", claves:"Contenía tus confluencias clave",
+  muchas_conf:"Tantas confluencias como tus ganadoras o más", rr_bueno:"R:R planeado bueno (≥ 2)",
+  sesion_fuerte:"Sesión donde históricamente rindes mejor", emo_ok:"Estado emocional tranquilo/confiado"};
+const RED_FLAGS = ["contra_sesgo","sin_plan","emocion_negativa","noticia_cerca","rr_bajo","setup_debil","tras_perdida","sobreoperar","errores","falta_clave"];
+
+// Reglas de noticias: [etiqueta, dirección (+1 dato mayor = divisa fuerte), peso, explicación]
+const EVENTS = [
+  ["Nóminas no agrícolas (NFP)",1,1,"Empleo creado fuera del sector agrícola. Más empleo = economía fuerte = banco central más duro."],
+  ["Tasa de desempleo",-1,.8,"Un paro más alto debilita la divisa (más probabilidad de bajadas de tipos)."],
+  ["Peticiones de subsidio por desempleo",-1,.4,"Más peticiones = mercado laboral más débil."],
+  ["IPC / inflación (CPI, HICP)",1,1,"Inflación alta = tipos altos por más tiempo = divisa fuerte."],
+  ["PCE (inflación preferida de la Fed)",1,.9,"Si el PCE sube más de lo previsto, la Fed tiene que ser más dura."],
+  ["IPP (precios de producción)",1,.5,"Anticipa la inflación al consumidor."],
+  ["Decisión de tipos",1,1,"Subida o tono duro = divisa fuerte."],
+  ["PIB",1,.8,"Más crecimiento = divisa fuerte."],
+  ["Ventas minoristas",1,.7,"Consumo fuerte = economía robusta."],
+  ["PMI / ISM",1,.7,"Por encima de 50 hay expansión. Mejor dato = divisa fuerte."],
+  ["ADP empleo privado",1,.5,"Anticipo de las nóminas oficiales."],
+  ["JOLTS (vacantes)",1,.5,"Más vacantes = mercado laboral tenso."],
+  ["Salarios (ganancias por hora)",1,.7,"Más salarios = más presión inflacionaria."],
+  ["Confianza del consumidor",1,.4,"Confianza alta = más gasto futuro."],
+  ["IFO / ZEW / Sentix",1,.5,"Sentimiento económico en Alemania y la Eurozona."],
+];
+
+// =====================================================================
+// Utilidades
+// =====================================================================
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => { if (v === null || v === undefined || v === "") return null; const n = Number(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
+const fmtR = v => v == null || Number.isNaN(v) ? "—" : (v > 0 ? "+" : "") + v.toFixed(2) + "R";
+const fmtP = v => v == null || Number.isNaN(v) ? "—" : v.toFixed(1) + "%";
+const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+const tags = v => Array.isArray(v) ? v.map(String).map(s => s.trim()).filter(Boolean) : String(v ?? "").split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+const toBool = v => { if (typeof v === "boolean") return v; const s = String(v ?? "").trim().toLowerCase(); if (["1","true","si","sí","yes","s","y"].includes(s)) return true; if (["0","false","no","n"].includes(s)) return false; return null; };
+const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+
+function computeR(dir, entry, sl, exit) {
+  if ([entry, sl, exit].some(v => v == null)) return null;
+  const risk = Math.abs(entry - sl); if (!risk) return null;
+  return Math.round((dir === "Long" ? 1 : -1) * (exit - entry) / risk * 100) / 100;
+}
+function plannedRR(t) { const e = num(t.entry), s = num(t.stop_loss), p = num(t.take_profit); if (e == null || s == null || p == null || e === s) return null; return Math.abs(p - e) / Math.abs(e - s); }
+function classify(r) { if (r == null) return null; return r > BE ? "Win" : r < -BE ? "Loss" : "BE"; }
+
+function normalize(raw) {
+  const t = {};
+  t.date = raw.date ? String(raw.date).slice(0, 10) : todayISO();
+  t.time = raw.time ? String(raw.time).slice(0, 5) : "";
+  t.pair = String(raw.pair || "EURUSD").toUpperCase().replace(/[^A-Z]/g, "");
+  const d = String(raw.direction || "").toLowerCase();
+  t.direction = /^(l|c|b)/.test(d) ? "Long" : "Short";
+  for (const k of ["entry", "stop_loss", "take_profit", "exit_price", "pnl"]) t[k] = num(raw[k]);
+  t.r = num(raw.r ?? raw.r_multiple);
+  if (t.r == null) t.r = computeR(t.direction, t.entry, t.stop_loss, t.exit_price);
+  const res = String(raw.result || "").toLowerCase();
+  t.result = ["win", "ganada", "tp", "w"].includes(res) ? "Win" : ["loss", "perdida", "pérdida", "sl", "l"].includes(res) ? "Loss" : ["be", "breakeven"].includes(res) ? "BE" : classify(t.r ?? (t.pnl != null ? Math.sign(t.pnl) : null));
+  for (const k of ["session", "setup", "timeframe", "daily_bias", "emotion", "notes"]) t[k] = raw[k] == null ? "" : String(raw[k]).trim();
+  t.confluences = tags(raw.confluences); t.mistakes = tags(raw.mistakes);
+  t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
+  t.ejemplo = !!raw.ejemplo;
+  return t;
+}
+// Campos derivados para el análisis
+function enrich(t) {
+  const d = new Date(t.date + "T12:00:00");
+  const b = (t.daily_bias || "").toLowerCase();
+  let aligned = null;
+  if (b.startsWith("alc") || b.startsWith("bull")) aligned = t.direction === "Long";
+  else if (b.startsWith("baj") || b.startsWith("bear")) aligned = t.direction === "Short";
+  return {...t, weekday: WEEKDAYS[d.getDay()], hour: t.time ? Number(t.time.slice(0, 2)) : null,
+    nConf: t.confluences.length, rr: plannedRR(t), aligned, win: t.result === "Win", loss: t.result === "Loss"};
+}
+
+// =====================================================================
+// Estadística
+// =====================================================================
+function summary(ts) {
+  const wins = ts.filter(t => t.win).length, losses = ts.filter(t => t.loss).length, be = ts.filter(t => t.result === "BE").length;
+  const rs = ts.map(t => t.r).filter(v => v != null);
+  const gw = rs.filter(v => v > 0).reduce((a, b) => a + b, 0), gl = -rs.filter(v => v < 0).reduce((a, b) => a + b, 0);
+  let eq = 0, peak = 0, dd = 0, bw = 0, bl = 0, cw = 0, cl = 0;
+  for (const t of ts) {
+    if (t.r != null) { eq += t.r; peak = Math.max(peak, eq); dd = Math.min(dd, eq - peak); }
+    if (t.win) { cw++; cl = 0; } else if (t.loss) { cl++; cw = 0; }
+    bw = Math.max(bw, cw); bl = Math.max(bl, cl);
+  }
+  const planned = ts.filter(t => t.followed_plan != null);
+  return { trades: ts.length, wins, losses, be,
+    wr: wins + losses ? 100 * wins / (wins + losses) : null,
+    totalR: rs.reduce((a, b) => a + b, 0), exp: mean(rs),
+    avgWin: mean(rs.filter(v => v > 0)), avgLoss: mean(rs.filter(v => v < 0)),
+    pf: gl > 0 ? gw / gl : null, dd, bestW: bw, worstL: bl,
+    plan: planned.length ? 100 * planned.filter(t => t.followed_plan).length / planned.length : null,
+    pnl: ts.some(t => t.pnl != null) ? ts.reduce((a, t) => a + (t.pnl || 0), 0) : null };
+}
+function groupStats(ts) { const s = summary(ts); return {n: s.trades, wins: s.wins, losses: s.losses, wr: s.wr, totalR: s.totalR, exp: s.exp}; }
+function breakdown(ts, key, min = 1) {
+  const groups = new Map();
+  for (const t of ts) {
+    const vals = Array.isArray(t[key]) ? t[key] : [t[key]];
+    for (const v of vals) { if (v === null || v === undefined || v === "") continue; if (!groups.has(v)) groups.set(v, []); groups.get(v).push(t); }
+  }
+  return [...groups].map(([k, g]) => ({key: k, ...groupStats(g)})).filter(r => r.n >= min)
+    .sort((a, b) => (b.exp ?? -99) - (a.exp ?? -99) || (b.wr ?? 0) - (a.wr ?? 0));
+}
+function confluenceLift(ts, min = 3) {
+  const dec = ts.filter(t => t.win || t.loss), W = dec.filter(t => t.win), L = dec.filter(t => t.loss);
+  const all = [...new Set(dec.flatMap(t => t.confluences))];
+  const rows = [];
+  for (const c of all) {
+    const w = dec.filter(t => t.confluences.includes(c)), wo = dec.filter(t => !t.confluences.includes(c));
+    if (w.length < min) continue;
+    const wrW = 100 * w.filter(t => t.win).length / w.length, wrWo = wo.length ? 100 * wo.filter(t => t.win).length / wo.length : null;
+    rows.push({c, n: w.length, inW: W.length ? 100 * W.filter(t => t.confluences.includes(c)).length / W.length : null,
+      inL: L.length ? 100 * L.filter(t => t.confluences.includes(c)).length / L.length : null,
+      wrW, wrWo, lift: wrWo == null ? null : wrW - wrWo, exp: mean(w.map(t => t.r).filter(v => v != null))});
+  }
+  return rows.sort((a, b) => (b.lift ?? -999) - (a.lift ?? -999));
+}
+function combos(ts, min = 3) {
+  const m = new Map();
+  for (const t of ts.filter(t => t.win || t.loss)) {
+    const c = [...new Set(t.confluences)].sort();
+    for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) {
+      const k = c[i] + " + " + c[j]; if (!m.has(k)) m.set(k, []); m.get(k).push(t);
+    }
+  }
+  return [...m].filter(([, g]) => g.length >= min).map(([k, g]) => ({k, n: g.length, wr: 100 * g.filter(t => t.win).length / g.length, exp: mean(g.map(t => t.r).filter(v => v != null))}))
+    .sort((a, b) => b.wr - a.wr || b.n - a.n);
+}
+function checklist(ts, min = 3) { return confluenceLift(ts, min).filter(r => r.lift != null && r.lift >= 10 && (r.exp ?? 0) > 0).slice(0, 5).map(r => r.c); }
+
+// =====================================================================
+// Diagnóstico
+// =====================================================================
+function diagnose(ts, min = 3) {
+  const sorted = [...ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const dec = sorted.filter(t => t.win || t.loss);
+  const key = checklist(sorted, min);
+  const winMed = median(dec.filter(t => t.win).map(t => t.nConf));
+  const overall = dec.length ? 100 * dec.filter(t => t.win).length / dec.length : 50;
+  const sess = breakdown(sorted, "session", min), setups = breakdown(sorted, "setup", min);
+  const weakS = new Set(sess.filter(r => r.wr != null && r.wr < overall - 10).map(r => r.key));
+  const strongS = new Set(sess.filter(r => r.wr != null && r.wr > overall + 10).map(r => r.key));
+  const weakSet = new Set(setups.filter(r => (r.exp ?? 0) < 0).map(r => r.key));
+  const perDay = {}; sorted.forEach(t => perDay[t.date] = (perDay[t.date] || 0) + 1);
+  const lossDay = {};
+  const F = sorted.map(t => {
+    const f = {
+      contra_sesgo: t.aligned === false, a_favor_sesgo: t.aligned === true,
+      sin_plan: t.followed_plan === false, plan: t.followed_plan === true,
+      emocion_negativa: NEG_EMO.has(t.emotion), emo_ok: ["Tranquilo", "Confiado"].includes(t.emotion),
+      noticia_cerca: t.news_nearby === true,
+      pocas_confluencias: winMed > 0 && t.nConf < winMed, muchas_conf: winMed > 0 && t.nConf >= winMed,
+      falta_clave: key.length > 0 && !key.slice(0, 3).some(c => t.confluences.includes(c)),
+      claves: key.length > 0 && key.some(c => t.confluences.includes(c)),
+      rr_bajo: t.rr != null && t.rr < 1.5, rr_bueno: t.rr != null && t.rr >= 2,
+      sesion_debil: weakS.has(t.session), sesion_fuerte: strongS.has(t.session), setup_debil: weakSet.has(t.setup),
+      tras_perdida: !!lossDay[t.date], sobreoperar: perDay[t.date] > 3, errores: t.mistakes.length > 0,
+    };
+    if (t.loss) lossDay[t.date] = true;
+    return f;
+  });
+  const flags = i => { const f = F[i]; const l = RED_FLAGS.filter(k => f[k]); if (l.includes("errores") && l.includes("sin_plan")) l.splice(l.indexOf("errores"), 1); return l.length; };
+  const quality = i => { const f = F[i]; const p = Object.keys(POS_FACTORS).filter(k => f[k]).length, n = Object.keys(NEG_FACTORS).filter(k => f[k]).length; return Math.max(0, Math.min(100, 50 + 8 * p - 9 * n)); };
+  const explain = i => {
+    const t = sorted[i], f = F[i], fl = flags(i);
+    const neg = Object.entries(NEG_FACTORS).filter(([k]) => f[k]).map(([, v]) => v);
+    const pos = Object.entries(POS_FACTORS).filter(([k]) => f[k]).map(([, v]) => v);
+    if (t.mistakes.length) neg.push("Errores: " + t.mistakes.join(", "));
+    let head = "Breakeven";
+    if (t.loss) head = fl >= 2 ? "Pérdida evitable" : fl === 0 ? "Pérdida dentro de la estadística (buena ejecución)" : "Pérdida con un punto débil claro";
+    if (t.win) head = pos.length >= 3 && fl === 0 ? "Ganadora de alta calidad" : fl >= 2 ? "Ganadora con malos hábitos" : "Ganadora correcta";
+    return {t, head, neg, pos, missing: key.filter(c => !t.confluences.includes(c)), q: quality(i), flags: fl};
+  };
+  // tabla de factores
+  const idxW = sorted.map((t, i) => t.win ? i : -1).filter(i => i >= 0), idxL = sorted.map((t, i) => t.loss ? i : -1).filter(i => i >= 0);
+  const rows = Object.entries({...NEG_FACTORS, ...POS_FACTORS}).map(([k, label]) => {
+    const pw = idxW.length ? 100 * idxW.filter(i => F[i][k]).length / idxW.length : null;
+    const pl = idxL.length ? 100 * idxL.filter(i => F[i][k]).length / idxL.length : null;
+    const occ = [...idxW, ...idxL].filter(i => F[i][k]);
+    return {k, label, neg: k in NEG_FACTORS, pw, pl, diff: pw == null || pl == null ? null : pl - pw, n: occ.length,
+      wr: occ.length ? 100 * occ.filter(i => sorted[i].win).length / occ.length : null};
+  }).filter(r => r.n > 0);
+  const causes = rows.filter(r => r.neg).sort((a, b) => b.diff - a.diff);
+  const traits = rows.filter(r => !r.neg).sort((a, b) => a.diff - b.diff);
+  const mistakes = {}; idxL.forEach(i => sorted[i].mistakes.forEach(m => mistakes[m] = (mistakes[m] || 0) + 1));
+  const avoid = idxL.filter(i => flags(i) >= 2);
+  const lostR = Math.abs(idxL.reduce((a, i) => a + (sorted[i].r || 0), 0)), avoidR = Math.abs(avoid.reduce((a, i) => a + (sorted[i].r || 0), 0));
+  const concl = [];
+  causes.slice(0, 4).forEach(r => { if (r.diff > 10) concl.push(`«${r.label}» aparece en el ${r.pl.toFixed(0)}% de tus perdedoras frente al ${r.pw.toFixed(0)}% de tus ganadoras (WR cuando ocurre: ${r.wr.toFixed(0)}%).`); });
+  traits.slice(0, 3).forEach(r => { if (r.diff < -10) concl.push(`Tus ganadoras comparten «${r.label}» (${r.pw.toFixed(0)}% de ganadoras frente a ${r.pl.toFixed(0)}% de perdedoras).`); });
+  if (key.length) concl.push("Las confluencias que más suben tu WR: " + key.join(", ") + ".");
+  if (idxL.length) concl.push(`${avoid.length} de ${idxL.length} pérdidas (${(100 * avoid.length / idxL.length).toFixed(0)}%) tenían 2 o más señales de alerta de proceso. Eran evitables y te costaron ${avoidR.toFixed(1)}R de los ${lostR.toFixed(1)}R perdidos.`);
+  // y si...
+  const base = summary(sorted);
+  const whatIf = [{s: "Tu histórico real", ...pick(base)}];
+  for (const [k, label] of Object.entries(NEG_FACTORS)) {
+    const keep = sorted.filter((_, i) => !F[i][k]);
+    if (keep.length === sorted.length || !keep.length) continue;
+    whatIf.push({s: "Sin: " + label.toLowerCase(), ...pick(summary(keep))});
+  }
+  return {sorted, F, key, causes, traits, mistakes: Object.entries(mistakes).sort((a, b) => b[1] - a[1]), concl, whatIf, explain};
+  function pick(s) { return {n: s.trades, wr: s.wr, totalR: s.totalR, exp: s.exp}; }
+}
+
+// =====================================================================
+// Estado y almacenamiento
+// =====================================================================
+const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, loaded: false, filter: {}, editing: null};
+let col = null;
+
+async function boot() {
+  wireTabs(); buildStaticUI();
+  renderAll();
+  const [db, user, sample] = await Promise.all([use("db"), use("user"), use("sample")]);
+  state.sample = sample;
+  document.querySelectorAll("[data-ai]").forEach(b => b.disabled = !sample);
+  $("#ai-off").hidden = !!sample;
+  if (!db || !user) {
+    banner("Inicia sesión en claude.ai para guardar tu journal. En esta vista las operaciones no se guardan.");
+    $("#who").textContent = "Sin guardar";
+    return;
+  }
+  state.db = db;
+  state.uid = await user.id();
+  if (!state.uid) { banner("No se pudo identificar tu cuenta: el journal no se guardará."); return; }
+  col = db.collection("data/users/" + state.uid);
+  col.onSnapshot(snap => {
+    state.trades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
+      .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const rep = snap.docs.find(d => d.id === "coach_report");
+    if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
+    state.loaded = true;
+    $("#who").textContent = `${state.trades.length} operaciones en tu journal`;
+    renderAll();
+  }, e => banner("No se pudo leer tu journal: " + e.message));
+  db.collection("briefings").orderBy("date", "desc").limit(60).onSnapshot(snap => {
+    state.briefings = snap.docs.map(d => d.data()).filter(b => b && b.date);
+    renderBriefing();
+  }, () => {});
+}
+function banner(msg) { const b = $("#global-banner"); b.textContent = msg; b.hidden = false; }
+
+async function saveTrade(raw, id) {
+  const t = normalize(raw);
+  const data = {kind: "trade", ...t, updated: new Date().toISOString()};
+  if (!col) { // modo sin guardar
+    state.trades.push(enrich({id: "local" + Math.random(), ...data})); renderAll(); return;
+  }
+  const ref = id ? col.doc(id) : col.doc("t_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+  await ref.set(data);
+}
+
+// =====================================================================
+// Pestañas
+// =====================================================================
+function wireTabs() {
+  $("#tabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-tab]"); if (!b) return;
+    showTab(b.dataset.tab);
+  });
+  const h = location.hash.slice(1); if (h && $("#view-" + h)) showTab(h);
+}
+function showTab(name) {
+  document.querySelectorAll("#tabs button").forEach(x => x.setAttribute("aria-selected", x.dataset.tab === name));
+  document.querySelectorAll("section.view").forEach(s => s.hidden = s.id !== "view-" + name);
+  renderAll();
+}
+const activeTab = () => document.querySelector("#tabs button[aria-selected=true]").dataset.tab;
+function renderAll() {
+  const tab = activeTab();
+  if (tab === "journal") renderJournal();
+  if (tab === "analisis") renderAnalysis();
+  if (tab === "filtros") renderFilters();
+  if (tab === "nueva") renderForm();
+  if (tab === "coach") renderCoach();
+  if (tab === "hoy") renderBriefing();
+}
+
+// =====================================================================
+// Render: tablas y piezas comunes
+// =====================================================================
+function table(el, cols, rows) {
+  if (!rows.length) { el.innerHTML = `<tr><td class="muted">Sin datos todavía.</td></tr>`; return; }
+  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c.n ? "n" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${
+    rows.map(r => `<tr>${cols.map(c => { const v = c.f(r); return `<td class="${c.n ? "n" : ""} ${c.cls ? c.cls(r) : ""}">${c.html ? v : esc(v)}</td>`; }).join("")}</tr>`).join("")}</tbody>`;
+}
+const statCols = h => [{h, f: r => r.key}, {h: "Ops", n: 1, f: r => r.n}, {h: "WR", n: 1, f: r => fmtP(r.wr)},
+  {h: "R total", n: 1, f: r => fmtR(r.totalR), cls: r => cls(r.totalR)}, {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}];
+function kpis(el, s, base) {
+  const d = (v, b, f) => base && v != null && b != null ? ` <span class="small ${cls(v - b)}">${f(v - b)}</span>` : "";
+  const items = [
+    ["Operaciones", s.trades], ["Win rate", fmtP(s.wr) + d(s.wr, base?.wr, x => (x > 0 ? "+" : "") + x.toFixed(1))],
+    ["R total", `<span class="${cls(s.totalR)}">${fmtR(s.totalR)}</span>`],
+    ["Expectativa", `<span class="${cls(s.exp)}">${fmtR(s.exp)}</span>` + d(s.exp, base?.exp, x => (x > 0 ? "+" : "") + x.toFixed(2))],
+    ["Profit factor", s.pf == null ? "—" : s.pf.toFixed(2)], ["Máx. drawdown", `<span class="neg">${fmtR(s.dd)}</span>`],
+    ["G / P / BE", `${s.wins} / ${s.losses} / ${s.be}`], ["R medio ganadora", fmtR(s.avgWin)], ["R medio perdedora", fmtR(s.avgLoss)],
+    ["Mejor / peor racha", `${s.bestW}W / ${s.worstL}L`], ["Plan cumplido", fmtP(s.plan)]];
+  el.innerHTML = items.map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
+}
+function tradeRow(t) {
+  return {...t, conf: t.confluences.join(", "), mist: t.mistakes.join(", ")};
+}
+const tradeCols = [
+  {h: "Fecha", f: t => t.date + (t.time ? " " + t.time : "")}, {h: "Par", f: t => t.pair}, {h: "Dir.", f: t => t.direction},
+  {h: "Sesión", f: t => t.session}, {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
+  {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
+  {h: "Sesgo", f: t => t.daily_bias}, {h: "Confluencias", f: t => t.conf}, {h: "Emoción", f: t => t.emotion},
+  {h: "Plan", f: t => t.followed_plan == null ? "" : t.followed_plan ? "Sí" : "No"}, {h: "Errores", f: t => t.mist}, {h: "Notas", f: t => t.notes}];
+
+function equitySVG(ts) {
+  const pts = ts.filter(t => t.r != null); if (pts.length < 2) return `<p class="muted small">Registra al menos 2 operaciones para ver la curva.</p>`;
+  let acc = 0; const ys = [0, ...pts.map(t => acc += t.r)];
+  const W = 900, H = 220, P = {l: 44, r: 12, t: 12, b: 24};
+  const min = Math.min(0, ...ys), max = Math.max(0, ...ys), span = max - min || 1;
+  const x = i => P.l + (W - P.l - P.r) * i / (ys.length - 1), y = v => P.t + (H - P.t - P.b) * (1 - (v - min) / span);
+  const step = Math.pow(10, Math.floor(Math.log10(span / 4))) * ([1, 2, 5].find(m => span / 4 <= m * Math.pow(10, Math.floor(Math.log10(span / 4)))) || 10);
+  let grid = "";
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) grid += `<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/><text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}R</text>`;
+  const d = ys.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const last = ys.at(-1);
+  return `<div style="overflow-x:auto"><svg class="equity" viewBox="0 0 ${W} ${H}" width="100%" style="min-width:420px" role="img" aria-label="Curva de capital">
+    ${grid}<line class="zero" x1="${P.l}" x2="${W - P.r}" y1="${y(0)}" y2="${y(0)}"/>
+    <path class="area" d="${d}L${x(ys.length - 1)},${y(0)}L${x(0)},${y(0)}Z" opacity=".6"/><path class="line" d="${d}"/>
+    <circle cx="${x(ys.length - 1)}" cy="${y(last)}" r="4" fill="var(--accent)"/>
+    <text x="${W - P.r}" y="${H - 6}" text-anchor="end">${ys.length - 1} operaciones · ${fmtR(last)}</text></svg></div>`;
+}
+
+// =====================================================================
+// Journal
+// =====================================================================
+function renderJournal() {
+  const pair = $("#j-pair").value;
+  const ts = state.trades.filter(t => !pair || t.pair === pair);
+  const ex = state.trades.filter(t => t.ejemplo).length;
+  $("#j-example").hidden = !ex;
+  $("#j-example").textContent = ex ? `Estás viendo ${ex} operaciones de EJEMPLO (inventadas) para que pruebes la página. Bórralas en «Registrar» cuando metas las tuyas.` : "";
+  kpis($("#j-kpis"), summary(ts));
+  $("#j-equity").innerHTML = equitySVG(ts);
+  const groups = [["Por mes", ts.map(t => ({...t, month: t.date.slice(0, 7)})), "month"], ["Por sesión", ts, "session"], ["Por setup", ts, "setup"],
+    ["Por día de la semana", ts, "weekday"], ["Por par y dirección", ts.map(t => ({...t, pd: t.pair + " " + t.direction})), "pd"], ["Por emoción", ts, "emotion"],
+    ["A favor o en contra del sesgo", ts.map(t => ({...t, al: t.aligned === true ? "A favor" : t.aligned === false ? "En contra" : "Neutral / sin dato"})), "al"]];
+  $("#j-breakdowns").innerHTML = groups.map((g, i) => `<div class="panel"><h3>${g[0]}</h3><div class="tablebox"><table id="jb${i}"></table></div></div>`).join("");
+  groups.forEach((g, i) => { const rows = breakdown(g[1], g[2]); if (g[2] === "month") rows.sort((a, b) => a.key.localeCompare(b.key)); table($("#jb" + i), statCols(g[0].replace("Por ", "").replace(/^./, c => c.toUpperCase())), rows); });
+  $("#j-count").textContent = ts.length + " operaciones";
+  table($("#j-table"), [...tradeCols, {h: "", html: 1, f: t => `<button class="btn small" data-edit="${esc(t.id)}">Editar</button>`}], [...ts].reverse().map(tradeRow));
+}
+$("#j-pair").addEventListener("change", renderJournal);
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-edit]"); if (!b) return;
+  const t = state.trades.find(x => x.id === b.dataset.edit); if (!t) return;
+  state.editing = t; showTab("nueva"); fillForm(t);
+});
+
+// =====================================================================
+// Análisis
+// =====================================================================
+function renderAnalysis() {
+  const dec = state.trades.filter(t => t.win || t.loss);
+  $("#a-empty").hidden = dec.length >= 5;
+  if (dec.length < 5) return;
+  const D = diagnose(state.trades);
+  $("#a-concl").innerHTML = D.concl.map(c => `<li>${esc(c)}</li>`).join("");
+  table($("#a-losses"), [{h: "Factor", f: r => r.label}, {h: "% perd.", n: 1, f: r => fmtP(r.pl), cls: () => "neg"}, {h: "% gan.", n: 1, f: r => fmtP(r.pw)}, {h: "WR si ocurre", n: 1, f: r => fmtP(r.wr)}, {h: "Ops", n: 1, f: r => r.n}], D.causes);
+  table($("#a-wins"), [{h: "Rasgo", f: r => r.label}, {h: "% gan.", n: 1, f: r => fmtP(r.pw), cls: () => "pos"}, {h: "% perd.", n: 1, f: r => fmtP(r.pl)}, {h: "WR si ocurre", n: 1, f: r => fmtP(r.wr)}, {h: "Ops", n: 1, f: r => r.n}], D.traits);
+  $("#a-mistakes").innerHTML = D.mistakes.length ? `<span class="label">Errores más repetidos en pérdidas</span><br>` + D.mistakes.slice(0, 6).map(([m, n]) => `<span class="pill down">${esc(m)} · ${n}</span>`).join(" ") : "";
+  $("#a-check").innerHTML = D.key.length ? D.key.map(c => `<li>${esc(c)}</li>`).join("") : `<li class="muted">Aún no hay suficientes datos.</li>`;
+  const lift = confluenceLift(state.trades);
+  $("#a-bars").innerHTML = lift.map(r => `<div class="bar-row"><span>${esc(r.c)}</span><div class="bar-track"><i class="w" style="width:${r.inW ?? 0}%"></i><i class="l" style="width:${r.inL ?? 0}%"></i></div><span class="mono small">${(r.inW ?? 0).toFixed(0)}% / ${(r.inL ?? 0).toFixed(0)}%</span></div>`).join("") || `<p class="muted small">Etiqueta confluencias en tus operaciones para ver este gráfico.</p>`;
+  table($("#a-lift"), [{h: "Confluencia", f: r => r.c}, {h: "Ops", n: 1, f: r => r.n}, {h: "WR con", n: 1, f: r => fmtP(r.wrW)}, {h: "WR sin", n: 1, f: r => fmtP(r.wrWo)},
+    {h: "Diferencia", n: 1, f: r => r.lift == null ? "—" : (r.lift > 0 ? "+" : "") + r.lift.toFixed(1) + " pts", cls: r => cls(r.lift)}, {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}], lift);
+  table($("#a-combos"), [{h: "Combinación", f: r => r.k}, {h: "Ops", n: 1, f: r => r.n}, {h: "WR", n: 1, f: r => fmtP(r.wr)}, {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}], combos(state.trades).slice(0, 15));
+  table($("#a-whatif"), [{h: "Escenario", f: r => r.s}, {h: "Ops", n: 1, f: r => r.n}, {h: "WR", n: 1, f: r => fmtP(r.wr)}, {h: "R total", n: 1, f: r => fmtR(r.totalR), cls: r => cls(r.totalR)}, {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}], D.whatIf);
+  const only = $("#a-only").value;
+  const rows = D.sorted.map((_, i) => D.explain(i)).filter(x => !only || x.t.result === only).reverse();
+  table($("#a-trades"), [{h: "Fecha", f: x => x.t.date}, {h: "Par", f: x => x.t.pair + " " + x.t.direction}, {h: "R", n: 1, f: x => fmtR(x.t.r), cls: x => cls(x.t.r)},
+    {h: "Veredicto", html: 1, f: x => `<span class="pill ${x.head.includes("evitable") || x.head.includes("malos") ? "warn" : x.t.win ? "up" : "down"}">${esc(x.head)}</span>`},
+    {h: "Proceso", n: 1, f: x => x.q + "/100"}, {h: "En contra", f: x => x.neg.join("; ")}, {h: "A favor", f: x => x.pos.join("; ")}, {h: "Le faltaba", f: x => x.missing.join(", ")}], rows);
+}
+$("#a-only").addEventListener("change", renderAnalysis);
+
+// =====================================================================
+// Filtros
+// =====================================================================
+const FSEL = [["pair", "Par"], ["direction", "Dirección"], ["session", "Sesión"], ["setup", "Setup"], ["result", "Resultado"], ["emotion", "Emoción"], ["weekday", "Día"],
+  ["followed_plan", "Plan seguido"], ["news_nearby", "Noticia cerca"], ["aligned", "A favor del sesgo"], ["mistake", "Con este error"]];
+function renderFilters() {
+  const ts = state.trades, f = state.filter;
+  const opts = k => k === "mistake" ? [...new Set(ts.flatMap(t => t.mistakes))].sort() : [...new Set(ts.map(t => t[k]).filter(v => v !== "" && v != null))].sort();
+  $("#f-selects").innerHTML = FSEL.map(([k, l]) => {
+    const bool = ["followed_plan", "news_nearby", "aligned"].includes(k);
+    const o = bool ? [["true", "Sí"], ["false", "No"]] : opts(k).map(v => [v, v]);
+    return `<label class="field">${l}<select data-f="${k}"><option value="">Todos</option>${o.map(([v, t]) => `<option value="${esc(v)}" ${String(f[k] ?? "") === String(v) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`;
+  }).join("") + `<label class="field">Desde<input type="date" data-f="from" value="${esc(f.from || "")}"></label><label class="field">Hasta<input type="date" data-f="to" value="${esc(f.to || "")}"></label>
+    <label class="field">Hora desde<input type="number" min="0" max="23" data-f="hFrom" value="${esc(f.hFrom ?? "")}"></label><label class="field">Hora hasta<input type="number" min="0" max="23" data-f="hTo" value="${esc(f.hTo ?? "")}"></label>
+    <label class="field">Mín. confluencias<input type="number" min="0" data-f="minC" value="${esc(f.minC ?? "")}"></label>`;
+  const confs = [...new Set(ts.flatMap(t => t.confluences))].sort();
+  for (const [id, key] of [["#f-all", "all"], ["#f-any", "any"], ["#f-none", "none"]])
+    $(id).innerHTML = confs.map(c => `<button type="button" class="chip" data-chip="${key}" aria-pressed="${(f[key] || []).includes(c)}">${esc(c)}</button>`).join("") || `<span class="muted small">Sin confluencias registradas.</span>`;
+  const sub = applyFilter(ts, f), base = summary(ts);
+  kpis($("#f-kpis"), summary(sub), base);
+  $("#f-warn").hidden = !(sub.length && sub.length < 20);
+  const g = $("#f-group").value;
+  table($("#f-table"), statCols("Grupo"), breakdown(sub, g));
+  table($("#f-trades"), tradeCols, [...sub].reverse().map(tradeRow));
+}
+function applyFilter(ts, f) {
+  return ts.filter(t => {
+    for (const [k] of FSEL) {
+      const v = f[k]; if (v === undefined || v === "") continue;
+      if (k === "mistake") { if (!t.mistakes.includes(v)) return false; continue; }
+      if (["followed_plan", "news_nearby", "aligned"].includes(k)) { if (t[k] !== (v === "true")) return false; continue; }
+      if (String(t[k]) !== v) return false;
+    }
+    if (f.from && t.date < f.from) return false;
+    if (f.to && t.date > f.to) return false;
+    if (f.hFrom !== undefined && f.hFrom !== "" && (t.hour == null || t.hour < +f.hFrom)) return false;
+    if (f.hTo !== undefined && f.hTo !== "" && (t.hour == null || t.hour > +f.hTo)) return false;
+    if (f.minC && t.nConf < +f.minC) return false;
+    if (f.all?.length && !f.all.every(c => t.confluences.includes(c))) return false;
+    if (f.any?.length && !f.any.some(c => t.confluences.includes(c))) return false;
+    if (f.none?.length && f.none.some(c => t.confluences.includes(c))) return false;
+    return true;
+  });
+}
+$("#view-filtros").addEventListener("change", e => { const k = e.target.dataset.f; if (k) { state.filter[k] = e.target.value; renderFilters(); } });
+$("#f-group").addEventListener("change", renderFilters);
+$("#view-filtros").addEventListener("click", e => {
+  const c = e.target.closest("[data-chip]"); if (c) { const k = c.dataset.chip, v = c.textContent; const a = state.filter[k] || []; state.filter[k] = a.includes(v) ? a.filter(x => x !== v) : [...a, v]; renderFilters(); }
+  if (e.target.id === "f-reset") { state.filter = {}; renderFilters(); }
+});
+
+// =====================================================================
+// Formulario
+// =====================================================================
+function buildStaticUI() {
+  $("#t-session").innerHTML = SESSIONS.map(s => `<option>${s}</option>`).join("");
+  $("#t-emotion").innerHTML = EMOTIONS.map(s => `<option>${s}</option>`).join("");
+  $("#ev-type").innerHTML = EVENTS.map((e, i) => `<option value="${i}">${e[0]}</option>`).join("");
+  $("#t-date").value = todayISO();
+}
+function chipSet(el, all, selected) { el.innerHTML = all.map(c => `<button type="button" class="chip" aria-pressed="${selected.includes(c)}">${esc(c)}</button>`).join(""); }
+function renderForm() {
+  const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
+  const knownM = [...new Set([...MISTAKES, ...state.trades.flatMap(t => t.mistakes)])];
+  const sel = el => [...el.querySelectorAll('[aria-pressed="true"]')].map(b => b.textContent);
+  chipSet($("#t-confs"), known, state.editing ? state.editing.confluences : sel($("#t-confs")));
+  chipSet($("#t-mistakes"), knownM, state.editing ? state.editing.mistakes : sel($("#t-mistakes")));
+  state.editing = state.editing && $("#t-id").value ? state.editing : null;
+  $("#setups").innerHTML = [...new Set(state.trades.map(t => t.setup).filter(Boolean))].map(s => `<option value="${esc(s)}">`).join("");
+  const hasEx = state.trades.some(t => t.ejemplo);
+  $("#del-examples").hidden = !hasEx || !col;
+  $("#csv-export").hidden = !state.trades.length;
+}
+$("#t-confs").addEventListener("click", toggleChip); $("#t-mistakes").addEventListener("click", toggleChip);
+function toggleChip(e) { const c = e.target.closest(".chip"); if (c) c.setAttribute("aria-pressed", c.getAttribute("aria-pressed") !== "true"); }
+function fillForm(t) {
+  $("#t-id").value = t.id; $("#t-form-title").textContent = "Editar operación del " + t.date; $("#t-cancel").hidden = false; $("#t-save").textContent = "Guardar cambios";
+  const set = (id, v) => $(id).value = v ?? "";
+  set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
+  set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
+  set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
+  set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
+  renderForm();
+}
+function resetForm() {
+  $("#t-form").reset(); $("#t-id").value = ""; state.editing = null; $("#t-date").value = todayISO();
+  $("#t-form-title").textContent = "Nueva operación"; $("#t-cancel").hidden = true; $("#t-save").textContent = "Guardar operación";
+  document.querySelectorAll("#t-confs .chip,#t-mistakes .chip").forEach(c => c.setAttribute("aria-pressed", "false"));
+}
+$("#t-cancel").addEventListener("click", resetForm);
+$("#t-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const sel = el => [...el.querySelectorAll('[aria-pressed="true"]')].map(b => b.textContent);
+  const v = id => $(id).value;
+  const hasPrices = num(v("#t-entry")) != null && num(v("#t-sl")) != null && num(v("#t-exit")) != null;
+  if (!hasPrices && num(v("#t-r")) == null) { $("#t-msg").innerHTML = `<span class="neg">Pon entrada, stop y salida, o el R conseguido.</span>`; return; }
+  const raw = {date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
+    daily_bias: v("#t-bias"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
+    followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
+    confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo};
+  $("#t-save").disabled = true;
+  try {
+    await saveTrade(raw, v("#t-id") || null);
+    const t = enrich(normalize(raw));
+    $("#t-msg").innerHTML = `<span class="pos">Guardada: ${esc(t.pair)} ${esc(t.direction)} · ${fmtR(t.r)} (${esc(t.result || "")}).</span>`;
+    resetForm(); renderForm();
+  } catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo guardar: ${esc(err.message || err.code)}</span>`; }
+  finally { $("#t-save").disabled = false; }
+});
+
+// CSV
+const ALIASES = {fecha: "date", hora: "time", par: "pair", simbolo: "pair", symbol: "pair", "dirección": "direction", direccion: "direction", tipo: "direction", side: "direction",
+  "sesión": "session", sesion: "session", entrada: "entry", sl: "stop_loss", tp: "take_profit", salida: "exit_price", exit: "exit_price", r_multiple: "r",
+  resultado: "result", confluencias: "confluences", sesgo: "daily_bias", bias: "daily_bias", plan: "followed_plan", "emoción": "emotion", emocion: "emotion",
+  noticia: "news_nearby", errores: "mistakes", notas: "notes", beneficio: "pnl", profit: "pnl", temporalidad: "timeframe"};
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  const sep = (text.split("\n")[0].match(/;/g) || []).length > (text.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true; else if (ch === sep) { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  const head = rows.shift().map(h => { const k = h.trim().toLowerCase(); return ALIASES[k] || k; });
+  return rows.filter(r => r.some(c => c.trim())).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+}
+$("#csv-file").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  const msg = $("#csv-msg");
+  try {
+    const rows = parseCSV(await file.text());
+    const miss = ["date", "pair", "direction"].filter(k => !(k in (rows[0] || {})));
+    if (miss.length) { msg.innerHTML = `<span class="neg">Faltan columnas: ${miss.join(", ")}.</span>`; return; }
+    let n = 0;
+    for (const r of rows) { await saveTrade(r); n++; if (n % 10 === 0) msg.textContent = `Importando… ${n}/${rows.length}`; }
+    msg.innerHTML = `<span class="pos">${n} operaciones importadas.</span>`;
+  } catch (err) { msg.innerHTML = `<span class="neg">No se pudo importar: ${esc(err.message || err.code)}</span>`; }
+  e.target.value = "";
+});
+$("#csv-export").addEventListener("click", async () => {
+  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "news_nearby", "mistakes", "notes"];
+  const q = v => { const s = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [cols.join(","), ...state.trades.map(t => cols.map(c => q(t[c])).join(","))].join("\n");
+  const dl = await use("downloads");
+  if (!dl) { $("#exp-msg").textContent = "La descarga no está disponible en esta vista."; return; }
+  try { await dl.save({filename: "journal-trading.csv", data: csv}); $("#exp-msg").textContent = "Descarga lista."; }
+  catch (e) { $("#exp-msg").textContent = e.code === "cancelled" || e.code === "declined" ? "Descarga cancelada." : "No se pudo descargar: " + (e.message || e.code); }
+});
+$("#del-examples").addEventListener("click", () => { $("#del-confirm").hidden = false; });
+$("#del-no").addEventListener("click", () => { $("#del-confirm").hidden = true; });
+$("#del-yes").addEventListener("click", async () => {
+  $("#del-confirm").hidden = true;
+  const ex = state.trades.filter(t => t.ejemplo); let n = 0;
+  for (const t of ex) { try { await col.doc(t.id).delete(); n++; } catch {} if (n % 10 === 0) $("#exp-msg").textContent = `Borrando… ${n}/${ex.length}`; }
+  $("#exp-msg").textContent = `${n} operaciones de ejemplo borradas.`;
+});
+
+// =====================================================================
+// Briefing diario
+// =====================================================================
+function renderBriefing() {
+  const bs = state.briefings;
+  $("#brief-empty").hidden = bs.length > 0;
+  const picker = $("#brief-picker");
+  const cur = picker.value;
+  picker.innerHTML = bs.map(b => `<option value="${esc(b.date)}">${esc(b.date)}</option>`).join("");
+  picker.hidden = !bs.length;
+  if (cur && bs.some(b => b.date === cur)) picker.value = cur;
+  const b = bs.find(x => x.date === picker.value) || bs[0];
+  if (!b) { $("#pair-cards").innerHTML = ""; $("#brief-summary").textContent = "—"; return; }
+  $("#brief-date").textContent = "Briefing del " + new Date(b.date + "T12:00:00").toLocaleDateString("es-ES", {weekday: "long", day: "numeric", month: "long"}) + (b.generated_at ? " · " + b.generated_at : "");
+  $("#pair-cards").innerHTML = ["EURUSD", "DXY"].map(p => {
+    const d = b.pairs?.[p]; if (!d) return "";
+    const up = Math.round(100 * d.prob_up), down = 100 - up;
+    const out = d.outcome ? `<span class="pill ${d.outcome.hit ? "up" : "down"}">${d.outcome.hit ? "Acertado" : "Fallado"}: cerró ${esc(d.outcome.change)}</span>` : "";
+    return `<div class="panel pair-card">
+      <div class="panel-head"><h3>${p}</h3><span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span></div>
+      <div class="price num">${esc(d.price ?? "")}</div>
+      <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
+      ${out}
+      <p style="margin:0">${esc(d.technical || "")}</p>
+      <dl class="levels">${Object.entries(d.levels || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      ${d.invalidation ? `<p class="small muted" style="margin:0"><b>Invalida el escenario:</b> ${esc(d.invalidation)}</p>` : ""}
+    </div>`;
+  }).join("");
+  $("#brief-summary").textContent = b.summary || "";
+  $("#brief-news").innerHTML = (b.news || []).map(n => `<article>
+      <div class="when">${esc(n.time || "")}<br>${esc(n.currency || "")}</div>
+      <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.status ? `<span class="pill ${n.status === "Publicado" ? "" : "warn"}">${esc(n.status)}</span>` : ""}</div>
+        <div class="data">Prev. ${esc(n.forecast ?? "—")} · Ant. ${esc(n.previous ?? "—")} · Real ${esc(n.actual ?? "—")}</div>
+        <div class="small">${esc(n.explanation || "")}</div></div></article>`).join("") || `<p class="muted small">Sin noticias de alto impacto registradas.</p>`;
+  $("#brief-risks").innerHTML = (b.risks || []).map(r => `<li>${esc(r)}</li>`).join("");
+  $("#brief-sources").innerHTML = (b.sources || []).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("");
+  // fiabilidad
+  const evals = bs.flatMap(x => ["EURUSD", "DXY"].map(p => x.pairs?.[p]?.outcome).filter(o => o && typeof o.hit === "boolean"));
+  $("#brief-accuracy").innerHTML = evals.length ? `<span class="num">${evals.filter(o => o.hit).length}/${evals.length}</span> aciertos de dirección (${(100 * evals.filter(o => o.hit).length / evals.length).toFixed(0)}%). Cuantos más días se registren, más fiable es esta cifra.`
+    : "Aún no hay días cerrados para medir el acierto. Cada mañana se comprueba si el sesgo del día anterior acertó.";
+}
+$("#brief-picker").addEventListener("change", renderBriefing);
+
+// Evaluador de noticias (reglas)
+function parseNum(s) { const m = String(s ?? "").trim().replace(",", ".").match(/^([+-]?\d*\.?\d+)\s*([kKmMbB%]?)$/); if (!m) return null; return Number(m[1]) * ({k: 1e3, m: 1e6, b: 1e9}[m[2].toLowerCase()] || 1); }
+function evaluateEvent() {
+  const [label, dir, w, expl] = EVENTS[+$("#ev-type").value], cur = $("#ev-cur").value;
+  const fc = parseNum($("#ev-fc").value), act = parseNum($("#ev-act").value);
+  const name = cur === "USD" ? "dólar" : "euro";
+  if (fc == null) return `${expl}\nEscribe al menos la previsión para ver los escenarios.`;
+  const strongPair = cur === "USD" ? "EURUSD baje y el DXY suba" : "EURUSD suba y el DXY baje";
+  const weakPair = cur === "USD" ? "EURUSD suba y el DXY baje" : "EURUSD baje y el DXY suba";
+  if (act == null) return `${expl}\n\nEscenarios:\n• Si sale ${dir > 0 ? "por encima" : "por debajo"} de ${$("#ev-fc").value}: ${name} fuerte, así que lo lógico es que ${strongPair}.\n• Si sale ${dir > 0 ? "por debajo" : "por encima"}: ${name} débil, así que lo lógico es que ${weakPair}.`;
+  const surprise = Math.max(-1, Math.min(1, (act - fc) / Math.max(Math.abs(fc), 1e-9) * 10)) * dir;
+  if (Math.abs(surprise * w) < .05) return `${expl}\n\nDato en línea con lo esperado (${$("#ev-act").value} frente a ${$("#ev-fc").value}): impacto limitado. Manda el sesgo técnico.`;
+  const strong = surprise > 0;
+  return `${expl}\n\nDato ${strong ? "mejor" : "peor"} de lo esperado (${$("#ev-act").value} frente a ${$("#ev-fc").value}): ${name} ${strong ? "fuerte" : "débil"}. Lo lógico es que ${strong ? strongPair : weakPair}.\nFuerza de la sorpresa: ${Math.abs(surprise * w) > .5 ? "alta" : Math.abs(surprise * w) > .2 ? "media" : "baja"}.`;
+}
+$("#ev-go").addEventListener("click", () => { $("#ev-out").textContent = evaluateEvent(); });
+$("#ev-ai").addEventListener("click", () => {
+  const ev = EVENTS[+$("#ev-type").value][0];
+  const latest = state.briefings[0];
+  askAI($("#ev-out"), `Eres analista de forex. Explica en español, en un párrafo corto, esta noticia de alto impacto y por qué lo lógico es que EURUSD y el índice del dólar DXY suban o bajen por ese motivo. Si falta el dato real, da los dos escenarios.
+Noticia: ${ev} (${$("#ev-cur").value}). Previsión: ${$("#ev-fc").value || "?"}. Dato real: ${$("#ev-act").value || "aún no publicado"}.
+Contexto del briefing más reciente (${latest?.date || "no disponible"}): ${latest?.summary || "—"}`, {modelTier: "quick"});
+});
+
+let pasteCtl;
+$("#paste-go").addEventListener("click", () => {
+  const txt = $("#paste-news").value.trim(); if (!txt) { $("#paste-out").textContent = "Pega primero alguna noticia o dato."; return; }
+  const b = state.briefings[0];
+  pasteCtl = new AbortController(); $("#paste-stop").hidden = false;
+  askAI($("#paste-out"), `Eres analista macro y técnico de forex. Responde en español.
+Fecha de hoy: ${todayISO()}.
+Briefing más reciente (${b?.date || "ninguno"}): ${b ? JSON.stringify({resumen: b.summary, EURUSD: b.pairs?.EURUSD, DXY: b.pairs?.DXY}) : "no disponible"}.
+Noticias y datos que ha leído el trader hoy:
+${txt.slice(0, 8000)}
+
+Para cada noticia relevante: resumen de 1-2 frases y "por este motivo lo lógico es que EURUSD suba/baje y el DXY suba/baje".
+Después da el sesgo final con un porcentaje aproximado de que EURUSD cierre hoy al alza o a la baja, y lo mismo para el DXY (recuerda: correlación inversa, el euro pesa ~57,6% en el DXY). Sé prudente: rara vez por encima del 70%. Termina con qué invalidaría el escenario. Sin tablas.`, {signal: pasteCtl.signal}).finally(() => $("#paste-stop").hidden = true);
+});
+$("#paste-stop").addEventListener("click", () => pasteCtl?.abort());
+
+// =====================================================================
+// Coach IA
+// =====================================================================
+const AI_ERR = {not_granted: "Has rechazado el permiso para usar Claude en esta página.", rate_limited: "Demasiadas peticiones seguidas. Espera un minuto.",
+  cancelled: "Parado.", prompt_too_large: "Hay demasiados datos para enviar de una vez. Filtra un rango de fechas más corto."};
+function mdLite(s) { return esc(s).replace(/^#{1,4}\s*(.+)$/gm, "<h4>$1</h4>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+async function askAI(out, prompt, opts = {}) {
+  if (!state.sample) { out.textContent = "La IA no está disponible en esta vista."; return null; }
+  out.innerHTML = `<span class="muted">Pensando… (puede tardar hasta un minuto)</span>`;
+  try {
+    const {text} = await state.sample(prompt, {...opts, onText: ({text}) => { out.innerHTML = mdLite(text); }});
+    out.innerHTML = mdLite(text); return text;
+  } catch (e) {
+    out.innerHTML = (e.text ? mdLite(e.text) + "<br>" : "") + `<span class="neg">${esc(AI_ERR[e.code] || "No se pudo completar: " + (e.message || e.code))}</span>`;
+    return null;
+  }
+}
+function compactCSV(ts, max = 400) {
+  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "news_nearby", "confluences", "mistakes", "notes"];
+  return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
+}
+const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados.`;
+function renderCoach() {
+  const sel = $("#c-trade"), cur = sel.value;
+  sel.innerHTML = [...state.trades].reverse().map(t => `<option value="${esc(t.id)}">${esc(t.date)} · ${esc(t.pair)} ${esc(t.direction)} · ${fmtR(t.r)} ${esc(t.result || "")}</option>`).join("");
+  if (cur) sel.value = cur;
+}
+let coachCtl;
+$("#c-go").addEventListener("click", async () => {
+  if (!state.trades.length) { $("#c-out").textContent = "Registra operaciones primero."; return; }
+  const D = diagnose(state.trades), s = summary(state.trades), lift = confluenceLift(state.trades);
+  const bd = k => breakdown(state.trades, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
+  const ex = state.trades.some(t => t.ejemplo) ? "\nAVISO: parte de estas operaciones son de ejemplo (inventadas); menciónalo." : "";
+  const prompt = `${COACH}
+
+Analiza mi journal completo.${ex}
+ESTADÍSTICAS: ${JSON.stringify({ops: s.trades, wr: s.wr?.toFixed(1), rTotal: s.totalR.toFixed(2), expectativa: s.exp?.toFixed(3), pf: s.pf?.toFixed(2), drawdown: s.dd.toFixed(2), planCumplido: s.plan?.toFixed(1)})}
+FACTORES (% en perdedoras vs ganadoras): ${D.causes.concat(D.traits).map(r => `${r.label}: perd ${fmtP(r.pl)} / gan ${fmtP(r.pw)} (WR si ocurre ${fmtP(r.wr)})`).join("; ")}
+CONCLUSIONES DEL MOTOR DE REGLAS: ${D.concl.join(" ")}
+CONFLUENCIAS (WR con / sin): ${lift.map(r => `${r.c}: ${r.n} ops, ${fmtP(r.wrW)} / ${fmtP(r.wrWo)}`).join("; ")}
+POR SESIÓN: ${bd("session")}
+POR SETUP: ${bd("setup")}
+POR DÍA: ${bd("weekday")}
+POR EMOCIÓN: ${bd("emotion")}
+OPERACIONES (CSV):
+${compactCSV(state.trades)}
+${$("#c-focus").value ? "ENFOQUE PEDIDO: " + $("#c-focus").value : ""}
+
+Escribe el informe con estos apartados (títulos con ##):
+## Diagnóstico general
+## Por qué fallan mis operaciones malas (causas ordenadas por R perdido, con ejemplos de fecha/par)
+## Por qué funcionan mis operaciones buenas
+## Las confluencias que más veo en mis buenas operaciones (y las que no aportan)
+## Patrones ocultos (horas, días, notas, combinaciones)
+## Mi checklist de operación A+ (5-8 puntos medibles)
+## 3 reglas nuevas para mi plan (con el impacto estimado)`;
+  coachCtl = new AbortController(); $("#c-stop").hidden = false; $("#c-go").disabled = true;
+  const text = await askAI($("#c-out"), prompt, {modelTier: "complex", signal: coachCtl.signal});
+  $("#c-stop").hidden = true; $("#c-go").disabled = false;
+  if (text && col) { try { await col.doc("coach_report").set({kind: "report", text, date: todayISO()}); $("#c-last").textContent = "Último informe: " + todayISO(); } catch {} }
+});
+$("#c-stop").addEventListener("click", () => coachCtl?.abort());
+$("#c-review").addEventListener("click", () => {
+  const t = state.trades.find(x => x.id === $("#c-trade").value); if (!t) return;
+  const D = diagnose(state.trades), i = D.sorted.findIndex(x => x.id === t.id), x = D.explain(i), s = summary(state.trades);
+  askAI($("#c-review-out"), `${COACH}
+
+Revisa esta operación: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, sesion: t.session, setup: t.setup, r: t.r, resultado: t.result, sesgo: t.daily_bias, confluencias: t.confluences, emocion: t.emotion, plan: t.followed_plan, noticia: t.news_nearby, errores: t.mistakes, notas: t.notes, rrPlaneado: t.rr?.toFixed(2)})}
+Diagnóstico de reglas: ${x.head}. En contra: ${x.neg.join("; ") || "nada"}. A favor: ${x.pos.join("; ") || "nada"}. Le faltaba: ${x.missing.join(", ") || "nada"}. Nota de proceso ${x.q}/100.
+Mis estadísticas: WR ${fmtP(s.wr)}, expectativa ${fmtR(s.exp)}. Mi checklist A+: ${D.key.join(", ") || "sin datos"}.
+Dime: 1) por qué salió así, 2) si la ejecución fue buena independientemente del resultado, 3) qué haría distinto un profesional, 4) la lección en una frase.`);
+});
+const chatTurns = [];
+$("#chat-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = $("#chat-in").value.trim(); if (!q) return; $("#chat-in").value = "";
+  const box = $("#chat");
+  box.insertAdjacentHTML("beforeend", `<div class="msg user">${esc(q)}</div>`);
+  const out = document.createElement("div"); out.className = "msg ai"; box.append(out);
+  if (!chatTurns.length) {
+    const s = summary(state.trades);
+    chatTurns.push({role: "user", content: `${COACH}\nResponde a mis preguntas sobre mis operaciones usando estos datos. Calcula con cuidado cuando te pregunte por WR o R de un subconjunto.\nResumen: ${state.trades.length} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}.\nOPERACIONES (CSV):\n${compactCSV(state.trades, 300)}`});
+  }
+  chatTurns.push({role: "user", content: q});
+  out.innerHTML = `<span class="muted">Pensando…</span>`;
+  try {
+    const {text} = await state.sample(chatTurns, {cache: false, onText: ({text}) => { out.innerHTML = mdLite(text); box.scrollTop = box.scrollHeight; }});
+    chatTurns.push({role: "assistant", content: text}); out.innerHTML = mdLite(text);
+  } catch (err) { chatTurns.pop(); out.innerHTML = `<span class="neg">${esc(AI_ERR[err.code] || "No se pudo responder: " + (err.message || err.code))}</span>`; }
+  box.scrollTop = box.scrollHeight;
+});
+
+boot();
+</script>
