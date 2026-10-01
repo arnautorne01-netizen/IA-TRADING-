@@ -501,6 +501,12 @@ details summary{cursor:pointer;font-weight:600}
     </div>
   </section>
 </main>
+<div id="deep-modal" hidden style="position:fixed;inset:0;z-index:20;background:rgba(10,15,30,.55);overflow-y:auto;padding:max(16px,env(safe-area-inset-top,0px)) 16px 16px">
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Análisis a fondo" style="max-width:960px;margin:0 auto">
+    <div class="row" style="justify-content:flex-end"><button class="btn" id="deep-close">Cerrar</button></div>
+    <div id="deep-body" style="display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
@@ -590,6 +596,7 @@ function normalize(raw) {
   t.shots = [...new Set([...(Array.isArray(raw.shots) ? raw.shots : tags(raw.shots)), ...(raw.shot ? [String(raw.shot)] : [])].map(String).filter(Boolean))];
   t.ai_analysis = raw.ai_analysis ? String(raw.ai_analysis) : "";
   t.ext_id = raw.ext_id ? String(raw.ext_id) : "";
+  t.deep_analysis = raw.deep_analysis && typeof raw.deep_analysis === "object" ? raw.deep_analysis : null;
   return t;
 }
 // Campos derivados para el análisis
@@ -767,6 +774,7 @@ async function boot() {
     state.trades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     state.pending = snap.docs.filter(d => d.data()?.kind === "pending_shots").length; renderPending();
+    state.pendingDeep = new Set(snap.docs.filter(d => d.data()?.kind === "pending_deep").map(d => d.data().trade_id));
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
@@ -1585,7 +1593,7 @@ function renderOps() {
     {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
     {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<span class="small muted">+${t.shots.length - 3}</span>` : ""}</span>`},
-    {h: "IA", html: 1, f: t => t.ai_analysis ? `<span class="pill up" title="${esc(t.ai_analysis)}">Analizada</span>` : t.shots.length && state.imgLimit !== 0 && state.sample ? `<button class="btn" data-analyze="${esc(t.id)}">Analizar</button>` : ""},
+    {h: "Análisis", html: 1, f: t => t.deep_analysis ? `<button class="btn" data-deep-open="${esc(t.id)}"><span class="pill ${deepGradeCls(t.deep_analysis.nota)}">${esc(t.deep_analysis.nota || "?")}</span> Ver</button>` : state.pendingDeep?.has(t.id) ? `<span class="pill warn">En cola</span>` : t.shots.length ? `<button class="btn" data-deep-run="${esc(t.id)}">Análisis a fondo</button>` : ""},
     {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
   ], [...ts].reverse());
 }
@@ -1718,7 +1726,9 @@ Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no 
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
-"estrategia":"2-3 frases: qué tipo de operativa refleja"}]}`;
+"estrategia":"2-3 frases: qué tipo de operativa refleja",
+${DEEP_SCHEMA}}]}
+${DEEP_GUIDE}`;
 }
 let autoBusy = false;
 async function autoFromImages(list) {
@@ -1755,7 +1765,7 @@ async function autoFromImages(list) {
           session: SESSIONS.includes(op.session) ? op.session : sessionFromMadridHour(time ? +time.slice(0, 2) : NaN),
           daily_bias: biasFromBriefing(date, pair), entry: op.entry, stop_loss: op.stop_loss, take_profit: op.take_profit, exit_price: op.exit_price,
           r: op.exit_price == null ? (num(op.r) ?? null) : null, result: op.result || null,
-          setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"),
+          setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"), deep_analysis: op.analisis_profundo?.pasos ? op.analisis_profundo : null,
           notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy)"}`};
         const id = await saveTrade(raw);
         const t = enrich(normalize(raw));
@@ -1763,6 +1773,7 @@ async function autoFromImages(list) {
         status.insertAdjacentHTML("afterend", `<div class="panel" style="background:var(--bg)">
           <div class="panel-head"><b>${esc(t.pair)} ${esc(t.direction)} · ${esc(t.date)}${t.time ? " " + esc(t.time) : ""}</b>
             <span class="row" style="gap:6px">${t.result ? `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result)} ${fmtR(t.r)}</span>` : `<span class="pill warn">Resultado no visible</span>`}
+            ${id && raw.deep_analysis ? `<button class="btn" data-deep-open="${esc(id)}"><span class="pill ${deepGradeCls(raw.deep_analysis.nota)}">${esc(raw.deep_analysis.nota || "?")}</span> Análisis a fondo</button>` : ""}
             ${id ? `<button class="btn" data-edit="${esc(id)}">Corregir</button>` : ""}</span></div>
           <div class="small"><b>${esc(t.setup || "Setup sin nombre")}</b>${t.session ? " · " + esc(t.session) : ""}${t.confluences.length ? " · " + esc(t.confluences.join(", ")) : ""}</div>
           <div class="ai-out small">${mdLite(raw.ai_analysis)}</div></div>`);
@@ -1788,6 +1799,81 @@ $("#auto-file").addEventListener("change", e => { autoFromImages(e.target.files)
   z.addEventListener("drop", e => autoFromImages(e.dataTransfer.files));
 }
 
+
+// =====================================================================
+// Análisis a fondo, paso a paso, de cada operación
+// =====================================================================
+const RULE_TEXT = `REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).`;
+const DEEP_STEPS = ["Contexto de temporalidad mayor", "Liquidez", "Estructura (BOS / CHoCH)", "Zona de entrada", "Gatillo y confirmación", "Gestión del riesgo", "Timing y sesión", "Resultado y gestión"];
+const DEEP_SCHEMA = `"analisis_profundo":{"nota":"A+|A|B|C|D","puntuacion":0-100,"resumen":"2-3 frases con el veredicto",
+"etiquetas_leidas":["textos y zonas que el trader ha dibujado en el gráfico, tal cual (p. ej. OB 1h, BOS, liquidez tomada, MIN ASIA, FVG 4H)"],
+"pasos":[{"paso":"${DEEP_STEPS[0]}","lectura":"3-5 frases concretas sobre lo que se ve en la imagen, con precios y horas","valoracion":"bien|mejorable|mal","nota":0-10}, ... un objeto por cada uno de estos 8 pasos y en este orden: ${DEEP_STEPS.join(" | ")}],
+"niveles":{"entrada":número,"stop":número,"objetivo":número,"riesgo_pips":número,"beneficio_pips":número,"rr":número},
+"resultado":{"estado":"TP|SL|Abierta","explicacion":"qué borde tocó primero el precio según la regla de zonas"},
+"que_haria_un_pro":"3-4 frases: qué habría hecho distinto un trader profesional en esta misma operación",
+"leccion":"la lección en una frase"}`;
+const DEEP_GUIDE = `ANÁLISIS A FONDO: como un mentor de Smart Money / ICT que corrige a su alumno, revisa la operación paso a paso. Lee TODAS las etiquetas y zonas que el trader ha dibujado (OB, FVG, iFVG, BOS, CHoCH, liquidez, mínimos/máximos de Asia, temporalidad de cada zona) y úsalas. Sé exigente y concreto: cita precios, horas y velas; di si el stop está protegido por estructura o expuesto a un barrido, si la zona es de calidad (frescura, desplazamiento, temporalidad), si hubo confirmación real antes de entrar, si el R:R compensa y si el momento (sesión, noticias, hora) era bueno. La puntuación juzga el PROCESO, no el resultado: una ganadora mal ejecutada puede sacar C y una perdedora bien ejecutada puede sacar A.`;
+function deepPrompt(t) {
+  return `${COACH}
+${stratTxt()}
+Te paso la imagen o imágenes de UNA operación del trader en EURUSD o DXY.
+${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes})}` : ""}
+${RULE_TEXT}
+${DEEP_GUIDE}
+Responde SOLO con un objeto JSON: {${DEEP_SCHEMA}}`;
+}
+function deepGradeCls(n) { return /^A/.test(n || "") ? "up" : n === "B" ? "" : n === "C" ? "warn" : "down"; }
+function openDeep(t) {
+  const D = t.deep_analysis; if (!D) return;
+  const v = {bien: ["Bien", "up"], mejorable: ["Mejorable", "warn"], mal: ["Mal", "down"]};
+  const L = D.niveles || {};
+  $("#deep-body").innerHTML = `
+    <div class="panel-head"><div><div class="label">${esc(t.date)} ${esc(t.time || "")} · ${esc(t.pair)} ${esc(t.direction)} · ${esc(t.timeframe || "")}</div>
+      <h2>${esc(t.setup || "Operación")}</h2></div>
+      <div class="row"><span class="pill ${deepGradeCls(D.nota)}" style="font-size:1rem;padding:4px 12px">${esc(D.nota || "—")} · ${esc(D.puntuacion ?? "—")}/100</span>
+      <span class="pill ${t.win ? "up" : t.loss ? "down" : "warn"}">${esc(D.resultado?.estado || t.result || "Abierta")} ${t.r != null ? fmtR(t.r) : ""}</span></div></div>
+    <p style="margin:0">${esc(D.resumen || "")}</p>
+    ${t.shots?.length ? `<div class="thumbs">${t.shots.map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Gráfico de la operación" style="max-height:340px;max-width:100%;border-radius:4px;border:1px solid var(--line)"></a>`).join("")}</div>` : ""}
+    ${D.etiquetas_leidas?.length ? `<div class="chips">${D.etiquetas_leidas.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : ""}
+    <dl class="levels">${[["Entrada", L.entrada], ["Stop", L.stop], ["Objetivo", L.objetivo], ["Riesgo", L.riesgo_pips != null ? L.riesgo_pips + " pips" : null], ["Beneficio", L.beneficio_pips != null ? L.beneficio_pips + " pips" : null], ["R:R", L.rr]].filter(x => x[1] != null).map(([k, x]) => `<dt>${k}</dt><dd>${esc(x)}</dd>`).join("")}</dl>
+    <ol class="clean" style="gap:12px">${(D.pasos || []).map(p => `<li><div class="row" style="gap:8px"><b>${esc(p.paso)}</b><span class="pill ${(v[p.valoracion] || ["", ""])[1]}">${(v[p.valoracion] || [p.valoracion || ""])[0]}${p.nota != null ? " · " + esc(p.nota) + "/10" : ""}</span></div><div class="small">${esc(p.lectura || "")}</div></li>`).join("")}</ol>
+    ${D.resultado?.explicacion ? `<p class="small" style="margin:0"><b>Resultado:</b> ${esc(D.resultado.explicacion)}</p>` : ""}
+    ${D.que_haria_un_pro ? `<div class="banner info"><b>Qué habría hecho un profesional:</b> ${esc(D.que_haria_un_pro)}</div>` : ""}
+    ${D.leccion ? `<p style="margin:0"><b>Lección:</b> ${esc(D.leccion)}</p>` : ""}`;
+  $("#deep-modal").hidden = false; document.body.style.overflow = "hidden";
+  $("#deep-close").focus();
+}
+function closeDeep() { $("#deep-modal").hidden = true; document.body.style.overflow = ""; }
+$("#deep-close").addEventListener("click", closeDeep);
+$("#deep-modal").addEventListener("click", e => { if (e.target.id === "deep-modal") closeDeep(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#deep-modal").hidden) closeDeep(); });
+async function runDeep(t, btn) {
+  if (!t?.shots?.length) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Analizando…"; }
+  try {
+    if (!state.sample || state.imgLimit === 0) throw {code: "images_unavailable"};
+    const blobs = []; for (const id of t.shots) { const b = await fetchBlob(id); if (b) blobs.push(b); }
+    if (!blobs.length) throw {message: "no se pudieron leer las imágenes"};
+    const D = await state.sample.json(deepPrompt(t), {images: blobs.slice(0, state.imgLimit || 5), modelTier: "complex"});
+    const deep = D?.analisis_profundo || D;
+    if (!deep?.pasos) throw {code: "invalid_json"};
+    if (col) await col.doc(t.id).update({deep_analysis: deep}); else { t.deep_analysis = deep; renderOps(); }
+    openDeep({...t, deep_analysis: deep});
+  } catch (e) {
+    if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && col) {
+      await col.doc("pending_deep_" + t.id).set({kind: "pending_deep", trade_id: t.id, shots: t.shots, created: new Date().toISOString()});
+      const mcp = await use("mcp"); let fired = false;
+      if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha pedido un análisis a fondo."}); fired = true; } catch {} }
+      if (btn) { btn.textContent = fired ? "En cola (1-2 min)" : "En cola"; btn.title = fired ? "La IA lo está analizando en segundo plano." : "Se analizará en la próxima revisión automática."; }
+      return;
+    }
+    if (btn) { btn.disabled = false; btn.textContent = "Reintentar"; btn.title = AI_ERR[e.code] || e.message || e.code || "Error"; }
+  }
+}
+document.addEventListener("click", e => {
+  const o = e.target.closest("[data-deep-open]"); if (o) { const t = state.trades.find(x => x.id === o.dataset.deepOpen); if (t) openDeep(t); return; }
+  const r = e.target.closest("[data-deep-run]"); if (r) { const t = state.trades.find(x => x.id === r.dataset.deepRun); if (t) runDeep(t, r); }
+});
 
 // El resultado manda: Win = salida en el TP, Loss = salida en el SL (zona azul / zona naranja)
 function fixOutcome(op) {
