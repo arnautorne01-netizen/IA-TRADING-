@@ -117,10 +117,11 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="hoy" aria-selected="true">Sesgo de hoy</button>
-      <button role="tab" data-tab="journal" aria-selected="false">Journal y WR</button>
+      <button role="tab" data-tab="operaciones" aria-selected="false">Mis operaciones</button>
+      <button role="tab" data-tab="estrategia" aria-selected="false">Mi estrategia</button>
+      <button role="tab" data-tab="journal" aria-selected="false">Win rate</button>
       <button role="tab" data-tab="analisis" aria-selected="false">Buenas vs malas</button>
       <button role="tab" data-tab="filtros" aria-selected="false">Filtros</button>
-      <button role="tab" data-tab="nueva" aria-selected="false">Registrar</button>
       <button role="tab" data-tab="coach" aria-selected="false">Coach IA</button>
     </nav>
   </div>
@@ -264,20 +265,23 @@ details summary{cursor:pointer;font-weight:600}
     <div class="panel"><h3>Operaciones filtradas</h3><div class="tablebox" style="max-height:480px"><table id="f-trades"></table></div></div>
   </section>
 
-  <!-- ====================== REGISTRAR ====================== -->
-  <section class="view" id="view-nueva" hidden>
-    <h2>Registrar operaciones</h2>
+  <!-- ====================== MIS OPERACIONES ====================== -->
+  <section class="view" id="view-operaciones" hidden>
+    <div class="panel-head">
+      <h2>Mis operaciones</h2>
+      <span class="muted small" id="o-strip"></span>
+    </div>
     <form class="panel" id="t-form">
       <input type="hidden" id="t-id">
-      <div class="panel-head"><h3 id="t-form-title">Nueva operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
+      <div class="panel-head"><h3 id="t-form-title">Añadir operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
       <div class="grid g3">
         <label>Fecha<input type="date" id="t-date" required></label>
         <label>Hora de entrada<input type="time" id="t-time"></label>
         <label>Par<select id="t-pair"><option>EURUSD</option><option>DXY</option></select></label>
         <label>Dirección<select id="t-dir"><option>Long</option><option>Short</option></select></label>
         <label>Sesión<select id="t-session"></select></label>
-        <label>Setup<input id="t-setup" placeholder="Barrido + FVG" list="setups"></label>
-        <label>Temporalidad<select id="t-tf"><option>M1</option><option selected>M5</option><option>M15</option><option>M30</option><option>H1</option><option>H4</option></select></label>
+        <label>Setup / modelo de entrada<input id="t-setup" placeholder="Barrido + FVG" list="setups"></label>
+        <label>Temporalidad de entrada<select id="t-tf"><option>M1</option><option selected>M5</option><option>M15</option><option>M30</option><option>H1</option><option>H4</option></select></label>
         <label>Sesgo diario que tenías<select id="t-bias"><option>Alcista</option><option>Bajista</option><option>Neutral</option></select></label>
         <label>Entrada<input id="t-entry" inputmode="decimal" placeholder="1.13250"></label>
         <label>Stop loss<input id="t-sl" inputmode="decimal"></label>
@@ -288,23 +292,30 @@ details summary{cursor:pointer;font-weight:600}
         <label>¿Seguiste el plan?<select id="t-plan"><option value="true">Sí</option><option value="false">No</option></select></label>
         <label>Emoción al entrar<select id="t-emotion"></select></label>
         <label>¿Noticia de alto impacto cerca?<select id="t-news"><option value="false">No</option><option value="true">Sí</option></select></label>
+        <label id="t-shot-wrap">Captura del gráfico (opcional)<input type="file" id="t-shot" accept="image/png,image/jpeg,image/webp"></label>
       </div>
       <div class="field">Confluencias presentes<div class="chips" id="t-confs"></div>
         <input id="t-conf-extra" placeholder="Otras confluencias, separadas por comas"></div>
       <div class="field">Errores cometidos<div class="chips" id="t-mistakes"></div></div>
-      <label class="field">Notas<textarea id="t-notes" placeholder="Qué viste, por qué entraste, cómo gestionaste"></textarea></label>
+      <label class="field">Notas: qué viste, por qué entraste, cómo gestionaste<textarea id="t-notes"></textarea></label>
       <div class="row"><button class="btn primary" type="submit" id="t-save">Guardar operación</button><span id="t-msg" class="small"></span></div>
+      <div id="t-fit" class="banner info" hidden></div>
     </form>
     <datalist id="setups"></datalist>
+    <div class="panel">
+      <div class="panel-head"><h3>Tus operaciones</h3><span class="muted small" id="o-count"></span></div>
+      <div id="o-empty" class="banner info" hidden>Aún no has registrado operaciones. Añade la primera con el formulario de arriba o importa un CSV. Con 10-20 operaciones la IA ya puede detectar tu estrategia.</div>
+      <div class="tablebox" style="max-height:620px"><table id="o-table"></table></div>
+    </div>
     <div class="grid g2">
       <div class="panel">
         <h3>Importar CSV</h3>
-        <p class="muted small" style="margin:0">Columnas mínimas: <span class="mono">date, pair, direction</span> y precios (<span class="mono">entry, stop_loss, take_profit, exit_price</span>) o <span class="mono">r</span>. También vale en español: fecha, par, dirección, entrada, sl, tp, salida, confluencias, sesgo, errores, notas.</p>
+        <p class="muted small" style="margin:0">Si ya llevas un journal en Excel o en tu plataforma, expórtalo a CSV. Columnas mínimas: <span class="mono">date, pair, direction</span> y precios (<span class="mono">entry, stop_loss, take_profit, exit_price</span>) o <span class="mono">r</span>. También vale en español: fecha, par, dirección, entrada, sl, tp, salida, confluencias, sesgo, errores, notas.</p>
         <input type="file" id="csv-file" accept=".csv,text/csv">
         <div id="csv-msg" class="small"></div>
       </div>
       <div class="panel">
-        <h3>Exportar y limpiar</h3>
+        <h3>Exportar</h3>
         <div class="row">
           <button class="btn" id="csv-export" hidden>Descargar CSV</button>
           <button class="btn danger" id="del-examples" hidden>Borrar operaciones de ejemplo</button>
@@ -312,6 +323,55 @@ details summary{cursor:pointer;font-weight:600}
         <div id="del-confirm" class="row" hidden><span class="small">¿Seguro? Se borrarán las operaciones de ejemplo.</span><button class="btn danger" id="del-yes">Sí, borrar</button><button class="btn" id="del-no">No</button></div>
         <div id="exp-msg" class="small"></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ====================== MI ESTRATEGIA ====================== -->
+  <section class="view" id="view-estrategia" hidden>
+    <div class="panel-head">
+      <div><div class="label">Detectada a partir de tus operaciones</div><h2 id="s-name">Mi estrategia</h2></div>
+      <div class="row"><button class="btn primary" id="s-go" data-ai>Detectar mi estrategia con IA</button><button class="btn" id="s-stop" hidden>Parar</button></div>
+    </div>
+    <div id="s-few" class="banner" hidden></div>
+    <div id="s-status" class="small muted"></div>
+    <div id="s-profile" hidden class="grid" style="gap:16px">
+      <div class="panel">
+        <div class="panel-head"><h3>Resumen</h3><span class="pill" id="s-conf"></span></div>
+        <p id="s-summary" style="margin:0;max-width:80ch"></p>
+      </div>
+      <div class="grid g2">
+        <div class="panel"><h3>Tu modelo de entrada, paso a paso</h3><ol class="clean" id="s-steps"></ol></div>
+        <div class="panel"><h3>Puntos clave de tu operativa</h3><ul class="clean" id="s-keys"></ul></div>
+      </div>
+      <div class="grid g3">
+        <div class="panel"><h3>Confluencias clave</h3><div class="chips" id="s-confs"></div><p class="small muted" id="s-confs-note" style="margin:0"></p></div>
+        <div class="panel"><h3>Contexto ideal</h3><dl class="levels" id="s-context"></dl></div>
+        <div class="panel"><h3>Gestión del riesgo</h3><dl class="levels" id="s-risk"></dl></div>
+      </div>
+      <div class="grid g2">
+        <div class="panel"><h3>Cuándo funciona</h3><ul class="clean" id="s-works"></ul></div>
+        <div class="panel"><h3>Cuándo falla</h3><ul class="clean" id="s-fails"></ul></div>
+      </div>
+      <div class="grid g2">
+        <div class="panel"><h3>Errores que repites</h3><ul class="clean" id="s-errors"></ul></div>
+        <div class="panel"><h3>Reglas que te recomiendo añadir</h3><ul class="clean" id="s-rules"></ul></div>
+      </div>
+    </div>
+    <div class="grid g2">
+      <div class="panel">
+        <div class="panel-head"><h3>Checklist antes de entrar</h3><span class="num" id="pre-score"></span></div>
+        <p class="muted small" style="margin:0">Márcala antes de cada operación. Si no cumples la mayoría, no es tu setup.</p>
+        <div id="pre-list" class="bars"></div>
+      </div>
+      <div class="panel">
+        <h3>¿Respetas tu estrategia?</h3>
+        <p class="muted small" style="margin:0">Compara las operaciones que encajan con tu estrategia (70% o más) con las que no.</p>
+        <div class="tablebox"><table id="s-adherence"></table></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Huella de tu operativa</h3><span class="muted small">Calculada con tus datos, sin IA</span></div>
+      <dl class="levels" id="s-print"></dl>
     </div>
   </section>
 
@@ -423,6 +483,7 @@ function normalize(raw) {
   t.confluences = tags(raw.confluences); t.mistakes = tags(raw.mistakes);
   t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
   t.ejemplo = !!raw.ejemplo;
+  t.shot = raw.shot ? String(raw.shot) : "";
   return t;
 }
 // Campos derivados para el análisis
@@ -573,14 +634,15 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, loaded: false, filter: {}, editing: null};
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, loaded: false, filter: {}, editing: null};
 let col = null;
 
 async function boot() {
   wireTabs(); buildStaticUI();
   renderAll();
-  const [db, user, sample] = await Promise.all([use("db"), use("user"), use("sample")]);
-  state.sample = sample;
+  const [db, user, sample, assets] = await Promise.all([use("db"), use("user"), use("sample"), use("assets")]);
+  state.sample = sample; state.assets = assets;
+  $("#t-shot-wrap").hidden = !assets;
   document.querySelectorAll("[data-ai]").forEach(b => b.disabled = !sample);
   $("#ai-off").hidden = !!sample;
   if (!db || !user) {
@@ -595,6 +657,8 @@ async function boot() {
   col.onSnapshot(snap => {
     state.trades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    const prof = snap.docs.find(d => d.id === "strategy_profile");
+    state.profile = prof ? prof.data() : null;
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
     state.loaded = true;
@@ -616,6 +680,7 @@ async function saveTrade(raw, id) {
   }
   const ref = id ? col.doc(id) : col.doc("t_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
   await ref.set(data);
+  return ref.id;
 }
 
 // =====================================================================
@@ -639,7 +704,8 @@ function renderAll() {
   if (tab === "journal") renderJournal();
   if (tab === "analisis") renderAnalysis();
   if (tab === "filtros") renderFilters();
-  if (tab === "nueva") renderForm();
+  if (tab === "operaciones") { renderForm(); renderOps(); }
+  if (tab === "estrategia") renderStrategy();
   if (tab === "coach") renderCoach();
   if (tab === "hoy") renderBriefing();
 }
@@ -700,8 +766,9 @@ function renderJournal() {
   const pair = $("#j-pair").value;
   const ts = state.trades.filter(t => !pair || t.pair === pair);
   const ex = state.trades.filter(t => t.ejemplo).length;
-  $("#j-example").hidden = !ex;
-  $("#j-example").textContent = ex ? `Estás viendo ${ex} operaciones de EJEMPLO (inventadas) para que pruebes la página. Bórralas en «Registrar» cuando metas las tuyas.` : "";
+  $("#j-example").hidden = !(ex || (state.loaded && !state.trades.length));
+  $("#j-example").innerHTML = !state.trades.length ? `Todavía no hay operaciones. Tu win rate y tus estadísticas se calculan con lo que registres en <button class="btn" data-goto="operaciones">Mis operaciones</button>`
+    : ex ? `Hay ${ex} operaciones de EJEMPLO mezcladas con las tuyas. Bórralas en «Mis operaciones».` : "";
   kpis($("#j-kpis"), summary(ts));
   $("#j-equity").innerHTML = equitySVG(ts);
   const groups = [["Por mes", ts.map(t => ({...t, month: t.date.slice(0, 7)})), "month"], ["Por sesión", ts, "session"], ["Por setup", ts, "setup"],
@@ -716,7 +783,7 @@ $("#j-pair").addEventListener("change", renderJournal);
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-edit]"); if (!b) return;
   const t = state.trades.find(x => x.id === b.dataset.edit); if (!t) return;
-  state.editing = t; showTab("nueva"); fillForm(t);
+  state.editing = t; showTab("operaciones"); fillForm(t); window.scrollTo({top: 0});
 });
 
 // =====================================================================
@@ -725,6 +792,7 @@ document.addEventListener("click", e => {
 function renderAnalysis() {
   const dec = state.trades.filter(t => t.win || t.loss);
   $("#a-empty").hidden = dec.length >= 5;
+  $("#a-empty").innerHTML = `Necesitas al menos 5 operaciones cerradas para este análisis (llevas ${dec.length}). <button class="btn" data-goto="operaciones">Añadir operaciones</button>`;
   if (dec.length < 5) return;
   const D = diagnose(state.trades);
   $("#a-concl").innerHTML = D.concl.map(c => `<li>${esc(c)}</li>`).join("");
@@ -832,7 +900,7 @@ function fillForm(t) {
 }
 function resetForm() {
   $("#t-form").reset(); $("#t-id").value = ""; state.editing = null; $("#t-date").value = todayISO();
-  $("#t-form-title").textContent = "Nueva operación"; $("#t-cancel").hidden = true; $("#t-save").textContent = "Guardar operación";
+  $("#t-form-title").textContent = "Añadir operación"; $("#t-cancel").hidden = true; $("#t-save").textContent = "Guardar operación";
   document.querySelectorAll("#t-confs .chip,#t-mistakes .chip").forEach(c => c.setAttribute("aria-pressed", "false"));
 }
 $("#t-cancel").addEventListener("click", resetForm);
@@ -845,12 +913,19 @@ $("#t-form").addEventListener("submit", async e => {
   const raw = {date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
     daily_bias: v("#t-bias"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
     followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
-    confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo};
+    confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shot: state.editing?.shot || ""};
   $("#t-save").disabled = true;
   try {
+    const file = $("#t-shot").files[0];
+    if (file && state.assets) {
+      $("#t-msg").textContent = "Subiendo captura…";
+      try { raw.shot = (await state.assets.upload(file)).id; }
+      catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo subir la captura (${esc(err.code || err.message)}). Se guarda la operación sin ella.</span>`; }
+    }
     await saveTrade(raw, v("#t-id") || null);
     const t = enrich(normalize(raw));
     $("#t-msg").innerHTML = `<span class="pos">Guardada: ${esc(t.pair)} ${esc(t.direction)} · ${fmtR(t.r)} (${esc(t.result || "")}).</span>`;
+    showFit(t);
     resetForm(); renderForm();
   } catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo guardar: ${esc(err.message || err.code)}</span>`; }
   finally { $("#t-save").disabled = false; }
@@ -990,6 +1065,222 @@ Después da el sesgo final con un porcentaje aproximado de que EURUSD cierre hoy
 $("#paste-stop").addEventListener("click", () => pasteCtl?.abort());
 
 // =====================================================================
+// Mis operaciones: lista con editar / borrar
+// =====================================================================
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-goto]"); if (g) { showTab(g.dataset.goto); window.scrollTo({top: 0}); }
+});
+function renderOps() {
+  const ts = state.trades, s = summary(ts);
+  $("#o-strip").textContent = ts.length ? `${ts.length} operaciones · WR ${fmtP(s.wr)} · ${fmtR(s.totalR)}` : "";
+  $("#o-count").textContent = ts.length ? `${ts.length} en total, la más reciente arriba` : "";
+  $("#o-empty").hidden = !(state.loaded && !ts.length) && ts.length > 0;
+  $("#o-table").parentElement.hidden = !ts.length;
+  const P = activeProfile();
+  table($("#o-table"), [
+    {h: "Fecha", f: t => t.date + (t.time ? " " + t.time : "")}, {h: "Operación", f: t => `${t.pair} ${t.direction}`}, {h: "Sesión", f: t => t.session},
+    {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
+    {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
+    {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
+    {h: "Confluencias", f: t => t.confluences.join(", ")},
+    {h: "Captura", html: 1, f: t => t.shot ? `<a href="/_blob/${esc(t.shot)}" target="_blank" rel="noopener"><img src="/_blob/${esc(t.shot)}" alt="Captura" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>` : ""},
+    {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
+  ], [...ts].reverse());
+}
+$("#o-table").addEventListener("click", async e => {
+  const d = e.target.closest("[data-del]");
+  if (d) { d.closest("[data-row]").innerHTML = `<span class="small">¿Borrar?</span><button class="btn danger" data-del-yes="${esc(d.dataset.del)}">Sí</button><button class="btn" data-del-no>No</button>`; return; }
+  if (e.target.closest("[data-del-no]")) { renderOps(); return; }
+  const y = e.target.closest("[data-del-yes]");
+  if (y) {
+    const id = y.dataset.delYes;
+    if (!col) { state.trades = state.trades.filter(t => t.id !== id); renderOps(); return; }
+    try { await col.doc(id).delete(); } catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo borrar: ${esc(err.message || err.code)}</span>`; }
+  }
+});
+
+// =====================================================================
+// Mi estrategia
+// =====================================================================
+// Perfil mínimo calculado con los datos, para cuando aún no hay perfil de IA
+function localProfile() {
+  if (state.trades.filter(t => t.win || t.loss).length < 5) return null;
+  const dec = state.trades.filter(t => t.win || t.loss);
+  const overall = 100 * dec.filter(t => t.win).length / dec.length;
+  return {
+    confluencias_clave: checklist(state.trades).slice(0, 4),
+    sesiones: breakdown(state.trades, "session", 3).filter(r => (r.wr ?? 0) >= overall).map(r => r.key),
+    setups: breakdown(state.trades, "setup", 3).filter(r => (r.exp ?? 0) > 0).map(r => r.key),
+    local: true,
+  };
+}
+function activeProfile() { return state.profile?.confluencias_clave ? state.profile : localProfile(); }
+// Encaje 0-100 de una operación con el perfil de estrategia
+function fitScore(t, P) {
+  const parts = [];
+  const keys = P.confluencias_clave || [];
+  if (keys.length) { const have = keys.filter(c => t.confluences.includes(c)).length; parts.push([35, Math.min(1, have / Math.max(1, Math.ceil(keys.length / 2))), have ? `${have} de ${keys.length} confluencias clave` : "ninguna confluencia clave"]); }
+  if (P.sesiones?.length && t.session) parts.push([20, P.sesiones.includes(t.session) ? 1 : 0, P.sesiones.includes(t.session) ? `sesión ${t.session}` : `sesión ${t.session} (no es la tuya)`]);
+  if (P.setups?.length && t.setup) parts.push([15, P.setups.includes(t.setup) ? 1 : 0, P.setups.includes(t.setup) ? `setup ${t.setup}` : `setup ${t.setup} (no es tu modelo)`]);
+  if (t.aligned != null) parts.push([15, t.aligned ? 1 : 0, t.aligned ? "a favor del sesgo" : "contra el sesgo"]);
+  parts.push([15, (t.followed_plan !== false && !NEG_EMO.has(t.emotion)) ? 1 : 0, t.followed_plan === false ? "sin seguir el plan" : NEG_EMO.has(t.emotion) ? `emoción: ${t.emotion}` : "disciplina correcta"]);
+  const w = parts.reduce((a, p) => a + p[0], 0);
+  return {score: Math.round(100 * parts.reduce((a, p) => a + p[0] * p[1], 0) / w), ok: parts.filter(p => p[1] >= .5).map(p => p[2]), ko: parts.filter(p => p[1] < .5).map(p => p[2])};
+}
+function showFit(t) {
+  const P = activeProfile(), box = $("#t-fit");
+  if (!P) { box.hidden = true; return; }
+  const f = fitScore(t, P);
+  box.hidden = false;
+  box.className = "banner " + (f.score >= 70 ? "info" : "");
+  box.innerHTML = `<b>Encaje con tu estrategia: ${f.score}%</b>. ${f.ok.length ? "A favor: " + esc(f.ok.join(", ")) + ". " : ""}${f.ko.length ? "Se aleja en: " + esc(f.ko.join(", ")) + "." : ""}`;
+}
+function fingerprint(ts) {
+  if (!ts.length) return [];
+  const top = (k, n = 3) => breakdown(ts, k).sort((a, b) => b.n - a.n).slice(0, n).map(r => `${r.key} (${r.n})`).join(", ") || "—";
+  const best = (k) => { const r = breakdown(ts, k, 3)[0]; return r ? `${r.key}: WR ${fmtP(r.wr)}, ${fmtR(r.exp)} por operación` : "—"; };
+  const rr = ts.map(t => t.rr).filter(v => v != null);
+  const al = ts.filter(t => t.aligned != null);
+  const longs = ts.filter(t => t.direction === "Long").length;
+  const hours = ts.filter(t => t.hour != null).map(t => t.hour);
+  const combo = (() => {
+    const g = new Map(); ts.forEach(t => { if (!t.session || !t.setup) return; const k = `${t.setup} en ${t.session}`; if (!g.has(k)) g.set(k, []); g.get(k).push(t); });
+    const r = [...g].filter(([, v]) => v.length >= 3).map(([k, v]) => ({k, ...groupStats(v)})).sort((a, b) => (b.exp ?? -9) - (a.exp ?? -9))[0];
+    return r ? `${r.k}: ${r.n} ops, WR ${fmtP(r.wr)}, ${fmtR(r.exp)} por operación` : "—";
+  })();
+  return [
+    ["Pares", top("pair")], ["Dirección", `${longs} largos / ${ts.length - longs} cortos`], ["Sesiones que más operas", top("session")],
+    ["Sesión más rentable", best("session")], ["Setups que más usas", top("setup")], ["Setup más rentable", best("setup")],
+    ["Tu mejor combinación", combo], ["Temporalidad", top("timeframe")],
+    ["Horas de entrada", hours.length ? `de ${Math.min(...hours)}h a ${Math.max(...hours)}h, la mayoría a las ${median(hours)}h` : "—"],
+    ["Confluencias que más usas", top("confluences", 5)], ["Confluencias por operación", (mean(ts.map(t => t.nConf)) ?? 0).toFixed(1) + " de media"],
+    ["R:R planeado", rr.length ? `${mean(rr).toFixed(2)} de media` : "—"],
+    ["A favor del sesgo diario", al.length ? fmtP(100 * al.filter(t => t.aligned).length / al.length) + " de las operaciones" : "—"],
+    ["Plan cumplido", fmtP(summary(ts).plan)],
+  ];
+}
+function preItems(P) {
+  if (P?.checklist?.length) return P.checklist;
+  const items = ["El sesgo diario está a favor de la operación"];
+  (P?.confluencias_clave || []).forEach(c => items.push(`Tengo: ${c}`));
+  if (P?.sesiones?.length) items.push(`Estoy en mi sesión: ${P.sesiones.join(" o ")}`);
+  items.push("R:R de 2 o más", "No hay noticia de alto impacto en los próximos 30 minutos", "Estoy tranquilo, no busco recuperar una pérdida");
+  return items;
+}
+function renderStrategy() {
+  const ts = state.trades, dec = ts.filter(t => t.win || t.loss), P = state.profile;
+  const few = $("#s-few");
+  few.hidden = dec.length >= 20;
+  few.innerHTML = dec.length < 10 ? `Llevas ${dec.length} operaciones cerradas. Para detectar tu estrategia con fiabilidad necesitas al menos 10 y lo ideal son 20 o más. <button class="btn" data-goto="operaciones">Añadir operaciones</button>`
+    : `Llevas ${dec.length} operaciones cerradas: la IA ya puede detectar tu estrategia, pero será más precisa a partir de 20-30.`;
+  $("#s-go").disabled = !state.sample || dec.length < 5;
+  $("#s-go").textContent = P ? "Volver a detectar con mis últimas operaciones" : "Detectar mi estrategia con IA";
+  $("#s-profile").hidden = !P;
+  $("#s-name").textContent = P?.nombre || "Mi estrategia";
+  if (P) {
+    const li = a => (a || []).map(x => `<li>${esc(x)}</li>`).join("") || `<li class="muted">—</li>`;
+    $("#s-status").textContent = `Detectada el ${P.fecha || "?"} con ${P.operaciones_analizadas ?? "?"} operaciones.` + (P.operaciones_analizadas && ts.length - P.operaciones_analizadas >= 10 ? ` Desde entonces has añadido ${ts.length - P.operaciones_analizadas}: conviene volver a detectarla.` : "");
+    $("#s-conf").textContent = "Confianza " + (P.confianza || "—");
+    $("#s-conf").className = "pill " + (P.confianza === "alta" ? "up" : P.confianza === "baja" ? "warn" : "");
+    $("#s-summary").textContent = P.resumen || "";
+    $("#s-steps").innerHTML = li(P.pasos); $("#s-keys").innerHTML = li(P.puntos_clave);
+    $("#s-confs").innerHTML = (P.confluencias_clave || []).map(c => `<span class="pill up">${esc(c)}</span>`).join("") + (P.confluencias_inutiles || []).map(c => `<span class="pill down" title="No aporta">${esc(c)}</span>`).join("");
+    $("#s-confs-note").textContent = P.confluencias_inutiles?.length ? "En rojo: confluencias que usas pero no te aportan." : "";
+    const dl = o => Object.entries(o || {}).filter(([, v]) => v && (!Array.isArray(v) || v.length)).map(([k, v]) => `<dt>${esc(k.replace(/_/g, " ").replace(/^./, c => c.toUpperCase()))}</dt><dd style="font-family:var(--f-body)">${esc(Array.isArray(v) ? v.join(", ") : v)}</dd>`).join("");
+    $("#s-context").innerHTML = dl({sesiones: P.sesiones, horas: P.contexto?.horas, dias: P.contexto?.dias, sesgo: P.contexto?.sesgo, temporalidades: P.contexto?.temporalidades, pares: P.contexto?.pares});
+    $("#s-risk").innerHTML = dl(P.riesgo);
+    $("#s-works").innerHTML = li(P.cuando_funciona); $("#s-fails").innerHTML = li(P.cuando_falla);
+    $("#s-errors").innerHTML = li(P.errores); $("#s-rules").innerHTML = li(P.reglas);
+  } else {
+    $("#s-status").textContent = dec.length >= 5 ? "Aún no has detectado tu estrategia con IA. Abajo tienes la huella calculada con tus datos." : "";
+  }
+  // checklist previa
+  const items = preItems(activeProfile());
+  $("#pre-list").innerHTML = items.map((x, i) => `<label class="row" style="gap:8px;flex-wrap:nowrap"><input type="checkbox" id="pre-${i}" style="width:auto"> <span>${esc(x)}</span></label>`).join("");
+  updatePre();
+  // adherencia
+  const AP = activeProfile();
+  if (AP) {
+    const fit = dec.filter(t => fitScore(t, AP).score >= 70), off = dec.filter(t => fitScore(t, AP).score < 70);
+    table($("#s-adherence"), statCols("Operaciones"), [{key: "Encajan con tu estrategia", ...groupStats(fit)}, {key: "No encajan", ...groupStats(off)}]);
+  } else table($("#s-adherence"), statCols("Operaciones"), []);
+  $("#s-print").innerHTML = fingerprint(ts).map(([k, v]) => `<dt>${esc(k)}</dt><dd style="font-family:var(--f-body)">${esc(v)}</dd>`).join("") || `<dt class="muted">Sin operaciones todavía</dt><dd></dd>`;
+}
+function updatePre() {
+  const boxes = [...document.querySelectorAll("#pre-list input")], n = boxes.filter(b => b.checked).length;
+  $("#pre-score").textContent = `${n}/${boxes.length}`;
+  $("#pre-score").className = "num " + (boxes.length && n / boxes.length >= .75 ? "pos" : n ? "" : "muted");
+}
+$("#pre-list").addEventListener("change", updatePre);
+
+async function shotBlobs(ts, max) {
+  const out = [];
+  for (const t of ts) {
+    if (out.length >= max) break;
+    if (!t.shot) continue;
+    try { const r = await fetch("/_blob/" + t.shot); if (r.ok) out.push({t, blob: await r.blob()}); } catch {}
+  }
+  return out;
+}
+let stratCtl;
+$("#s-go").addEventListener("click", async () => {
+  const ts = state.trades, dec = ts.filter(t => t.win || t.loss);
+  const D = diagnose(ts), s = summary(ts), lift = confluenceLift(ts);
+  const bd = k => breakdown(ts, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
+  const names = arr => [...new Set(arr.filter(Boolean))].join(" | ");
+  const st = $("#s-status");
+  st.textContent = "Preparando datos…";
+  let images = [];
+  try {
+    const lim = await state.sample.limits().catch(() => null);
+    if (lim?.images) images = await shotBlobs([...dec].sort((a, b) => (b.r ?? 0) - (a.r ?? 0)), Math.min(4, lim.images.maxCount));
+  } catch {}
+  const prompt = `${COACH}
+
+Tu tarea: detectar la ESTRATEGIA real de este trader a partir de su journal: qué hace realmente (no lo que dice que hace), en qué condiciones gana y en cuáles pierde, y sus puntos clave. Basa cada afirmación en los datos y cita cifras (WR, R, nº de operaciones).
+${ts.some(t => t.ejemplo) ? "AVISO: parte de las operaciones son de ejemplo (inventadas)." : ""}
+${images.length ? `Te adjunto ${images.length} capturas de gráfico de sus mejores operaciones: ${images.map((x, i) => `imagen ${i + 1} = ${x.t.date} ${x.t.pair} ${x.t.direction} ${fmtR(x.t.r)}`).join("; ")}. Úsalas para describir el modelo de entrada.` : ""}
+
+ESTADÍSTICAS: ${s.trades} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}, expectativa ${fmtR(s.exp)}, profit factor ${s.pf?.toFixed(2) ?? "—"}, plan cumplido ${fmtP(s.plan)}.
+FACTORES (% en perdedoras / % en ganadoras): ${D.causes.concat(D.traits).map(r => `${r.label}: ${fmtP(r.pl)} / ${fmtP(r.pw)}`).join("; ")}
+CONFLUENCIAS (ops, WR con / WR sin, expectativa): ${lift.map(r => `${r.c}: ${r.n}, ${fmtP(r.wrW)} / ${fmtP(r.wrWo)}, ${fmtR(r.exp)}`).join("; ")}
+POR SESIÓN: ${bd("session")}
+POR SETUP: ${bd("setup")}
+POR HORA: ${bd("hour")}
+POR DÍA: ${bd("weekday")}
+POR TEMPORALIDAD: ${bd("timeframe")}
+HUELLA: ${fingerprint(ts).map(([k, v]) => `${k}: ${v}`).join("; ")}
+OPERACIONES (CSV):
+${compactCSV(ts)}
+
+Responde SOLO con un objeto JSON con esta forma (todo en español; en confluencias_clave, confluencias_inutiles, sesiones y setups usa EXACTAMENTE los nombres que aparecen en los datos):
+{"nombre":"nombre corto y descriptivo de su estrategia","resumen":"4-5 frases: qué opera, cuándo, cómo entra y cuál es su ventaja real",
+"confianza":"alta|media|baja (según el tamaño de la muestra)",
+"pasos":["paso 1 de su modelo de entrada", "..."],
+"puntos_clave":["5-7 puntos clave de su operativa con cifras"],
+"confluencias_clave":["2-5 confluencias que más le suman"],"confluencias_inutiles":["confluencias que usa pero no aportan"],
+"sesiones":["sesiones donde su estrategia funciona"],"setups":["setups rentables"],
+"contexto":{"horas":"...","dias":"...","sesgo":"cómo usa el sesgo diario","temporalidades":"...","pares":"..."},
+"riesgo":{"stop":"dónde y cuánto","objetivo":"dónde y R:R","gestion":"cómo gestiona","rr_medio":"..."},
+"cuando_funciona":["..."],"cuando_falla":["..."],"errores":["errores que repite, con cifras"],
+"checklist":["6-8 comprobaciones sí/no antes de entrar, concretas y medibles"],"reglas":["3-5 reglas nuevas con el impacto estimado"]}`;
+  stratCtl = new AbortController(); $("#s-stop").hidden = false; $("#s-go").disabled = true;
+  st.textContent = "Analizando tus operaciones… (puede tardar 1-2 minutos)";
+  try {
+    const prof = await state.sample.json(prompt, {modelTier: "complex", signal: stratCtl.signal, images: images.length ? images.map(x => x.blob) : undefined});
+    if (!prof || typeof prof !== "object" || !prof.resumen) throw {code: "invalid_json"};
+    const doc = {...prof, kind: "profile", fecha: todayISO(), operaciones_analizadas: ts.length};
+    state.profile = doc;
+    if (col) await col.doc("strategy_profile").set(doc);
+    renderStrategy();
+  } catch (e) {
+    st.innerHTML = `<span class="neg">${esc(e.code === "invalid_json" ? "La respuesta no tenía el formato esperado. Vuelve a intentarlo." : AI_ERR[e.code] || "No se pudo completar: " + (e.message || e.code))}</span>`;
+  } finally { $("#s-stop").hidden = true; $("#s-go").disabled = false; }
+});
+$("#s-stop").addEventListener("click", () => stratCtl?.abort());
+const stratTxt = () => state.profile ? `\nESTRATEGIA DETECTADA DEL TRADER: ${JSON.stringify({nombre: state.profile.nombre, resumen: state.profile.resumen, confluencias_clave: state.profile.confluencias_clave, sesiones: state.profile.sesiones, setups: state.profile.setups, checklist: state.profile.checklist})}\n` : "";
+
+// =====================================================================
 // Coach IA
 // =====================================================================
 const AI_ERR = {not_granted: "Has rechazado el permiso para usar Claude en esta página.", rate_limited: "Demasiadas peticiones seguidas. Espera un minuto.",
@@ -1023,7 +1314,7 @@ $("#c-go").addEventListener("click", async () => {
   const bd = k => breakdown(state.trades, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
   const ex = state.trades.some(t => t.ejemplo) ? "\nAVISO: parte de estas operaciones son de ejemplo (inventadas); menciónalo." : "";
   const prompt = `${COACH}
-
+${stratTxt()}
 Analiza mi journal completo.${ex}
 ESTADÍSTICAS: ${JSON.stringify({ops: s.trades, wr: s.wr?.toFixed(1), rTotal: s.totalR.toFixed(2), expectativa: s.exp?.toFixed(3), pf: s.pf?.toFixed(2), drawdown: s.dd.toFixed(2), planCumplido: s.plan?.toFixed(1)})}
 FACTORES (% en perdedoras vs ganadoras): ${D.causes.concat(D.traits).map(r => `${r.label}: perd ${fmtP(r.pl)} / gan ${fmtP(r.pw)} (WR si ocurre ${fmtP(r.wr)})`).join("; ")}
@@ -1055,6 +1346,7 @@ $("#c-review").addEventListener("click", () => {
   const t = state.trades.find(x => x.id === $("#c-trade").value); if (!t) return;
   const D = diagnose(state.trades), i = D.sorted.findIndex(x => x.id === t.id), x = D.explain(i), s = summary(state.trades);
   askAI($("#c-review-out"), `${COACH}
+${stratTxt()}Valora también cuánto encaja esta operación con su estrategia.
 
 Revisa esta operación: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, sesion: t.session, setup: t.setup, r: t.r, resultado: t.result, sesgo: t.daily_bias, confluencias: t.confluences, emocion: t.emotion, plan: t.followed_plan, noticia: t.news_nearby, errores: t.mistakes, notas: t.notes, rrPlaneado: t.rr?.toFixed(2)})}
 Diagnóstico de reglas: ${x.head}. En contra: ${x.neg.join("; ") || "nada"}. A favor: ${x.pos.join("; ") || "nada"}. Le faltaba: ${x.missing.join(", ") || "nada"}. Nota de proceso ${x.q}/100.
@@ -1070,7 +1362,7 @@ $("#chat-form").addEventListener("submit", async e => {
   const out = document.createElement("div"); out.className = "msg ai"; box.append(out);
   if (!chatTurns.length) {
     const s = summary(state.trades);
-    chatTurns.push({role: "user", content: `${COACH}\nResponde a mis preguntas sobre mis operaciones usando estos datos. Calcula con cuidado cuando te pregunte por WR o R de un subconjunto.\nResumen: ${state.trades.length} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}.\nOPERACIONES (CSV):\n${compactCSV(state.trades, 300)}`});
+    chatTurns.push({role: "user", content: `${COACH}${stratTxt()}\nResponde a mis preguntas sobre mis operaciones usando estos datos. Calcula con cuidado cuando te pregunte por WR o R de un subconjunto.\nResumen: ${state.trades.length} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}.\nOPERACIONES (CSV):\n${compactCSV(state.trades, 300)}`});
   }
   chatTurns.push({role: "user", content: q});
   out.innerHTML = `<span class="muted">Pensando…</span>`;
