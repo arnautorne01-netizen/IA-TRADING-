@@ -325,15 +325,16 @@ details summary{cursor:pointer;font-weight:600}
       <h2>Mis operaciones</h2>
       <span class="muted small" id="o-strip"></span>
     </div>
-    <div class="panel">
-      <h3>Añade operaciones sin escribir</h3>
-      <div class="quick">
-        <div class="opt"><b>Importa el historial de tu bróker</b><span class="small muted">MT4, MT5, cTrader, TradingView… Todas tus operaciones de golpe, sin duplicados.</span><button type="button" class="btn primary" data-goto-import>Importar historial</button></div>
-        <div class="opt"><b>Arrastra o pega una captura</b><span class="small muted">Suéltala en el recuadro de abajo o pulsa Ctrl+V. La IA rellena la operación sola; tú solo guardas.</span></div>
-        <div class="opt"><b>Lo demás se rellena solo</b><span class="small muted">La sesión sale de la hora y el sesgo diario del briefing de ese día. Emoción, plan y errores son opcionales.</span></div>
-      </div>
+    <div class="panel" id="auto-panel">
+      <label class="drop" id="auto-drop" for="auto-file" style="padding:34px 18px">
+        <b style="font-size:1.1rem">Suelta aquí las capturas de tus operaciones</b>
+        <span class="small muted">O pulsa para elegirlas, o pégalas con Ctrl+V. La IA detecta la operación, la guarda y actualiza tu estrategia. No tienes que escribir nada.<br>Puedes soltar capturas de varias operaciones a la vez: la IA las separa.</span>
+        <input type="file" id="auto-file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+      <div id="auto-out" style="display:flex;flex-direction:column;gap:10px"></div>
+      <p class="small muted" style="margin:0">Para que la IA lea bien el resultado, usa capturas donde se vean la herramienta de posición (entrada, SL y TP), la escala de precios y las fechas del eje.</p>
     </div>
-    <form class="panel" id="t-form">
+    <details class="panel" id="manual-wrap"><summary><b>Corregir o añadir una operación a mano</b> <span class="small muted">(opcional)</span></summary>
+    <form id="t-form" style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
       <input type="hidden" id="t-id">
       <div class="panel-head"><h3 id="t-form-title">Añadir operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
       <div class="field" id="t-shot-wrap">
@@ -371,10 +372,11 @@ details summary{cursor:pointer;font-weight:600}
       <div class="row"><button class="btn primary" type="submit" id="t-save">Guardar operación</button><span id="t-msg" class="small"></span></div>
       <div id="t-fit" class="banner info" hidden></div>
     </form>
+    </details>
     <datalist id="setups"></datalist>
     <div class="panel">
       <div class="panel-head"><h3>Tus operaciones</h3><span class="muted small" id="o-count"></span></div>
-      <div id="o-empty" class="banner info" hidden>Aún no has registrado operaciones. Añade la primera arriba (con su imagen, la IA rellena casi todo) o importa un CSV. Con una sola operación la IA ya hace una detección preliminar de tu estrategia; con 10-20, una detección fiable.</div>
+      <div id="o-empty" class="banner info" hidden>Aún no hay operaciones. Suelta arriba la captura de una operación y la IA la creará sola. Con una ya detecta tu estrategia de forma preliminar; con 10-20, de forma fiable.</div>
       <div class="tablebox" style="max-height:620px"><table id="o-table"></table></div>
     </div>
     <div class="grid g2">
@@ -772,7 +774,8 @@ async function saveTrade(raw, id) {
   const t = normalize(raw);
   const data = {kind: "trade", ...t, updated: new Date().toISOString()};
   if (!col) { // modo sin guardar
-    state.trades.push(enrich({id: "local" + Math.random(), ...data})); renderAll(); return;
+    const lid = "local" + Math.random().toString(36).slice(2);
+    state.trades.push(enrich({id: lid, ...data})); renderAll(); return lid;
   }
   const ref = id ? col.doc(id) : col.doc("t_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
   await ref.set(data);
@@ -879,7 +882,7 @@ $("#j-pair").addEventListener("change", renderJournal);
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-edit]"); if (!b) return;
   const t = state.trades.find(x => x.id === b.dataset.edit); if (!t) return;
-  state.editing = t; showTab("operaciones"); fillForm(t); window.scrollTo({top: 0});
+  state.editing = t; showTab("operaciones"); $("#manual-wrap").open = true; fillForm(t); $("#manual-wrap").scrollIntoView({behavior: "smooth"});
 });
 
 // =====================================================================
@@ -1598,9 +1601,11 @@ const drop = $("#t-drop");
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", e => addImages(e.dataTransfer.files));
 document.addEventListener("paste", e => {
-  if (activeTab() !== "operaciones" || $("#t-shot-wrap").hidden) return;
+  if (activeTab() !== "operaciones") return;
   const files = [...(e.clipboardData?.files || [])];
-  if (files.some(f => f.type.startsWith("image/"))) { e.preventDefault(); addImages(files); }
+  if (!files.some(f => f.type.startsWith("image/"))) return;
+  e.preventDefault();
+  if ($("#manual-wrap").open && !$("#t-shot-wrap").hidden) addImages(files); else autoFromImages(files);
 });
 $("#t-thumbs").addEventListener("click", e => {
   const b = e.target.closest("[data-unshot]"); if (b) { state.formShots = state.formShots.filter(x => x !== b.dataset.unshot); renderThumbs(); }
@@ -1667,6 +1672,94 @@ async function runImageAnalysis() {
     out.innerHTML = `<span class="neg">${esc(e.code === "invalid_json" ? "No pude leer bien la imagen. Prueba con una captura más nítida." : AI_ERR[e.code] || "No se pudo analizar: " + (e.message || e.code))}</span>`;
   } finally { btn.disabled = false; }
 }
+// =====================================================================
+// Modo automático: suelta capturas y la IA crea las operaciones sola
+// =====================================================================
+function autoPrompt(n) {
+  const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
+  const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
+  return `${COACH}
+${stratTxt()}
+Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos de EURUSD o DXY del trader (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
+Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
+Si en la imagen no se ve cómo terminó, deduce el resultado solo si es evidente (por ejemplo, el precio llega claramente al objetivo o al stop dibujado); si no, deja result y r en null.
+Confluencias conocidas (usa estos nombres exactos cuando apliquen; puedes añadir nuevas): ${known.join(" | ")}
+Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
+Sesiones válidas: ${SESSIONS.join(" | ")}
+Estructura actual del mercado: ${mtfText("EURUSD") || "no disponible"}
+
+Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
+{"operaciones":[{"imagenes":[1,2],"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|DXY","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
+"entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,
+"setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null",
+"analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
+"estrategia":"2-3 frases: qué tipo de operativa refleja"}]}`;
+}
+let autoBusy = false;
+async function autoFromImages(list) {
+  const files = [...list].filter(f => /^image\/(png|jpeg|webp)$/.test(f.type));
+  const out = $("#auto-out");
+  if (!files.length) return;
+  if (!state.sample || !state.imgLimit) { out.insertAdjacentHTML("afterbegin", `<div class="banner">La IA con imágenes no está disponible en esta vista. Abre la página en claude.ai con tu cuenta.</div>`); return; }
+  if (autoBusy) { out.insertAdjacentHTML("afterbegin", `<div class="banner">Espera a que termine el análisis anterior.</div>`); return; }
+  autoBusy = true;
+  const status = document.createElement("div"); status.className = "banner info"; out.prepend(status);
+  let saved = 0;
+  try {
+    for (let i = 0; i < files.length; i += state.imgLimit) {
+      const chunk = files.slice(i, i + state.imgLimit);
+      status.textContent = `La IA está mirando ${chunk.length === 1 ? "la captura" : `${chunk.length} capturas`}… (puede tardar hasta un minuto)`;
+      const res = await state.sample.json(autoPrompt(chunk.length), {images: chunk, modelTier: "complex"});
+      const ops = Array.isArray(res?.operaciones) ? res.operaciones : Array.isArray(res) ? res : [];
+      if (!ops.length) throw {code: "invalid_json"};
+      const used = new Set();
+      for (const op of ops) {
+        const idx = (Array.isArray(op.imagenes) ? op.imagenes : []).map(n => +n - 1).filter(n => n >= 0 && n < chunk.length && !used.has(n));
+        if (!idx.length && ops.length === 1) chunk.forEach((_, k) => idx.push(k));
+        idx.forEach(n => used.add(n));
+        status.textContent = "Guardando la operación…";
+        const shots = [];
+        if (state.assets) for (const n of idx) { try { shots.push((await state.assets.upload(chunk[n])).id); } catch {} }
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(op.date || "") ? op.date : todayISO();
+        const time = /^\d{1,2}:\d{2}$/.test(op.time || "") ? op.time.padStart(5, "0") : "";
+        const pair = ["EURUSD", "DXY"].includes(op.pair) ? op.pair : "EURUSD";
+        const confs = (Array.isArray(op.confluences) ? op.confluences : []).map(String);
+        const raw = {date, time, pair, direction: op.direction === "Short" ? "Short" : "Long", timeframe: op.timeframe || "",
+          session: SESSIONS.includes(op.session) ? op.session : sessionFromMadridHour(time ? +time.slice(0, 2) : NaN),
+          daily_bias: biasFromBriefing(date, pair), entry: op.entry, stop_loss: op.stop_loss, take_profit: op.take_profit, exit_price: op.exit_price,
+          r: [op.entry, op.stop_loss, op.exit_price].every(v => num(v) != null) ? null : op.r, result: op.result || null,
+          setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"),
+          notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy)"}`};
+        const id = await saveTrade(raw);
+        const t = enrich(normalize(raw));
+        saved++;
+        status.insertAdjacentHTML("afterend", `<div class="panel" style="background:var(--bg)">
+          <div class="panel-head"><b>${esc(t.pair)} ${esc(t.direction)} · ${esc(t.date)}${t.time ? " " + esc(t.time) : ""}</b>
+            <span class="row" style="gap:6px">${t.result ? `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result)} ${fmtR(t.r)}</span>` : `<span class="pill warn">Resultado no visible</span>`}
+            ${id ? `<button class="btn" data-edit="${esc(id)}">Corregir</button>` : ""}</span></div>
+          <div class="small"><b>${esc(t.setup || "Setup sin nombre")}</b>${t.session ? " · " + esc(t.session) : ""}${t.confluences.length ? " · " + esc(t.confluences.join(", ")) : ""}</div>
+          <div class="ai-out small">${mdLite(raw.ai_analysis)}</div></div>`);
+      }
+    }
+    status.className = "banner info";
+    status.textContent = `${saved} ${saved === 1 ? "operación guardada" : "operaciones guardadas"} automáticamente.${state.trades.length >= 1 ? " Actualizando tu estrategia…" : ""}`;
+    if (saved) {
+      const ok = await detectStrategy();
+      status.innerHTML = `${saved} ${saved === 1 ? "operación guardada" : "operaciones guardadas"} automáticamente. ${ok ? `Tu estrategia está actualizada: <button class="btn" data-goto="estrategia">Ver mi estrategia</button>` : "No se pudo actualizar la estrategia ahora; puedes hacerlo desde «Mi estrategia»."}`;
+    }
+  } catch (e) {
+    status.className = "banner";
+    status.textContent = e.code === "invalid_json" ? "No pude leer bien las capturas. Prueba con imágenes más nítidas donde se vean el precio y las fechas." : AI_ERR[e.code] || "No se pudo analizar: " + (e.message || e.code);
+  } finally { autoBusy = false; }
+}
+$("#auto-file").addEventListener("change", e => { autoFromImages(e.target.files); e.target.value = ""; });
+{
+  const z = $("#auto-drop");
+  ["dragenter", "dragover"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove("over"); }));
+  z.addEventListener("drop", e => autoFromImages(e.dataTransfer.files));
+}
+
 // Analizar una operación ya guardada a partir de sus imágenes
 $("#o-table").addEventListener("click", async e => {
   const b = e.target.closest("[data-analyze]"); if (!b) return;
@@ -1757,7 +1850,7 @@ function renderStrategy() {
   const ts = state.trades, dec = ts.filter(t => t.win || t.loss), P = state.profile;
   const few = $("#s-few");
   few.hidden = dec.length >= 20;
-  few.innerHTML = !ts.length ? `Añade tu primera operación con su imagen y la IA detectará tu estrategia a partir de ella. <button class="btn" data-goto="operaciones">Añadir operación</button>`
+  few.innerHTML = !ts.length ? `Suelta la captura de una operación en «Mis operaciones» y la IA detectará tu estrategia sola. <button class="btn" data-goto="operaciones">Subir capturas</button>`
     : dec.length < 10 ? `Llevas ${ts.length} ${ts.length === 1 ? "operación" : "operaciones"}. La IA ya puede describir tu estrategia a partir de ${ts.length === 1 ? "ella y su imagen" : "ellas y sus imágenes"} (detección preliminar). Para saber qué te funciona y qué no, con estadística, hacen falta 10-20 o más.`
     : `Llevas ${dec.length} operaciones cerradas: la IA ya puede detectar tu estrategia, y será más precisa a partir de 20-30.`;
   $("#s-go").disabled = !state.sample || !ts.length;
@@ -1815,7 +1908,8 @@ async function shotBlobs(ts, max) {
   return out;
 }
 let stratCtl;
-$("#s-go").addEventListener("click", async () => {
+$("#s-go").addEventListener("click", () => detectStrategy());
+async function detectStrategy() {
   const ts = state.trades, dec = ts.filter(t => t.win || t.loss);
   const D = diagnose(ts), s = summary(ts), lift = confluenceLift(ts);
   const bd = k => breakdown(ts, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
@@ -1867,10 +1961,12 @@ Responde SOLO con un objeto JSON con esta forma (todo en español; en confluenci
     state.profile = doc;
     if (col) await col.doc("strategy_profile").set(doc);
     renderStrategy();
+    return true;
   } catch (e) {
     st.innerHTML = `<span class="neg">${esc(e.code === "invalid_json" ? "La respuesta no tenía el formato esperado. Vuelve a intentarlo." : AI_ERR[e.code] || "No se pudo completar: " + (e.message || e.code))}</span>`;
+    return false;
   } finally { $("#s-stop").hidden = true; $("#s-go").disabled = false; }
-});
+}
 $("#s-stop").addEventListener("click", () => stratCtl?.abort());
 const stratTxt = () => state.profile ? `\nESTRATEGIA DETECTADA DEL TRADER: ${JSON.stringify({nombre: state.profile.nombre, resumen: state.profile.resumen, confluencias_clave: state.profile.confluencias_clave, sesiones: state.profile.sesiones, setups: state.profile.setups, checklist: state.profile.checklist})}\n` : "";
 
