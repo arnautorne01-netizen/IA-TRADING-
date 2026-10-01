@@ -86,6 +86,11 @@ textarea{min-height:70px;resize:vertical}
 ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.thumb{position:relative;display:inline-block}
+.thumb img{height:72px;max-width:140px;object-fit:cover;border-radius:4px;border:1px solid var(--line);display:block}
+.thumb button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--down);cursor:pointer;font:600 12px var(--f-body);line-height:1}
+.thumb .tag{position:absolute;left:4px;bottom:4px;font:600 .65rem var(--f-body);background:var(--accent);color:var(--panel);padding:0 5px;border-radius:3px}
 .levels{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.88rem}
 .levels dt{color:var(--muted)} .levels dd{margin:0;font-family:var(--f-mono)}
 .news{display:flex;flex-direction:column;gap:0;border-top:1px solid var(--line)}
@@ -294,6 +299,12 @@ details summary{cursor:pointer;font-weight:600}
     <form class="panel" id="t-form">
       <input type="hidden" id="t-id">
       <div class="panel-head"><h3 id="t-form-title">Añadir operación</h3><button type="button" class="btn" id="t-cancel" hidden>Cancelar edición</button></div>
+      <div class="field" id="t-shot-wrap"><span><b>1. Sube las imágenes de la operación</b> (antes de entrar, durante, resultado; puedes subir varias). La IA las mira y rellena el formulario por ti.</span>
+        <div class="row"><input type="file" id="t-shot" accept="image/png,image/jpeg,image/webp" multiple style="flex:1;min-width:0">
+          <button type="button" class="btn primary" id="t-ai" data-ai>Analizar con IA y rellenar</button></div>
+        <div class="thumbs" id="t-thumbs"></div>
+        <div id="t-ai-out" class="ai-out small"></div>
+      </div>
       <div class="grid g3">
         <label>Fecha<input type="date" id="t-date" required></label>
         <label>Hora de entrada<input type="time" id="t-time"></label>
@@ -312,7 +323,6 @@ details summary{cursor:pointer;font-weight:600}
         <label>¿Seguiste el plan?<select id="t-plan"><option value="true">Sí</option><option value="false">No</option></select></label>
         <label>Emoción al entrar<select id="t-emotion"></select></label>
         <label>¿Noticia de alto impacto cerca?<select id="t-news"><option value="false">No</option><option value="true">Sí</option></select></label>
-        <label id="t-shot-wrap">Captura del gráfico (opcional)<input type="file" id="t-shot" accept="image/png,image/jpeg,image/webp"></label>
       </div>
       <div class="field">Confluencias presentes<div class="chips" id="t-confs"></div>
         <input id="t-conf-extra" placeholder="Otras confluencias, separadas por comas"></div>
@@ -324,7 +334,7 @@ details summary{cursor:pointer;font-weight:600}
     <datalist id="setups"></datalist>
     <div class="panel">
       <div class="panel-head"><h3>Tus operaciones</h3><span class="muted small" id="o-count"></span></div>
-      <div id="o-empty" class="banner info" hidden>Aún no has registrado operaciones. Añade la primera con el formulario de arriba o importa un CSV. Con 10-20 operaciones la IA ya puede detectar tu estrategia.</div>
+      <div id="o-empty" class="banner info" hidden>Aún no has registrado operaciones. Añade la primera arriba (con su imagen, la IA rellena casi todo) o importa un CSV. Con una sola operación la IA ya hace una detección preliminar de tu estrategia; con 10-20, una detección fiable.</div>
       <div class="tablebox" style="max-height:620px"><table id="o-table"></table></div>
     </div>
     <div class="grid g2">
@@ -503,7 +513,8 @@ function normalize(raw) {
   t.confluences = tags(raw.confluences); t.mistakes = tags(raw.mistakes);
   t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
   t.ejemplo = !!raw.ejemplo;
-  t.shot = raw.shot ? String(raw.shot) : "";
+  t.shots = [...new Set([...(Array.isArray(raw.shots) ? raw.shots : tags(raw.shots)), ...(raw.shot ? [String(raw.shot)] : [])].map(String).filter(Boolean))];
+  t.ai_analysis = raw.ai_analysis ? String(raw.ai_analysis) : "";
   return t;
 }
 // Campos derivados para el análisis
@@ -654,7 +665,7 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, loaded: false, filter: {}, editing: null};
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], formAI: "", imgLimit: 0, loaded: false, filter: {}, editing: null};
 let col = null;
 
 async function boot() {
@@ -663,6 +674,8 @@ async function boot() {
   const [db, user, sample, assets] = await Promise.all([use("db"), use("user"), use("sample"), use("assets")]);
   state.sample = sample; state.assets = assets;
   $("#t-shot-wrap").hidden = !assets;
+  if (sample) { try { const lim = await sample.limits(); state.imgLimit = lim?.images?.maxCount || 0; } catch {} }
+  $("#t-ai").hidden = !state.imgLimit;
   document.querySelectorAll("[data-ai]").forEach(b => b.disabled = !sample);
   $("#ai-off").hidden = !!sample;
   if (!db || !user) {
@@ -916,12 +929,15 @@ function fillForm(t) {
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
   set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
   set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
+  state.formShots = [...(t.shots || [])]; state.formAI = t.ai_analysis || ""; $("#t-shot").value = "";
+  $("#t-ai-out").innerHTML = state.formAI ? "<b>Análisis de la IA:</b> " + mdLite(state.formAI) : ""; renderThumbs();
   renderForm();
 }
 function resetForm() {
   $("#t-form").reset(); $("#t-id").value = ""; state.editing = null; $("#t-date").value = todayISO();
   $("#t-form-title").textContent = "Añadir operación"; $("#t-cancel").hidden = true; $("#t-save").textContent = "Guardar operación";
   document.querySelectorAll("#t-confs .chip,#t-mistakes .chip").forEach(c => c.setAttribute("aria-pressed", "false"));
+  state.formShots = []; state.formAI = ""; $("#t-ai-out").innerHTML = ""; renderThumbs();
 }
 $("#t-cancel").addEventListener("click", resetForm);
 $("#t-form").addEventListener("submit", async e => {
@@ -933,14 +949,17 @@ $("#t-form").addEventListener("submit", async e => {
   const raw = {date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
     daily_bias: v("#t-bias"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
     followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
-    confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shot: state.editing?.shot || ""};
+    confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
   $("#t-save").disabled = true;
   try {
-    const file = $("#t-shot").files[0];
-    if (file && state.assets) {
-      $("#t-msg").textContent = "Subiendo captura…";
-      try { raw.shot = (await state.assets.upload(file)).id; }
-      catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo subir la captura (${esc(err.code || err.message)}). Se guarda la operación sin ella.</span>`; }
+    const files = [...$("#t-shot").files];
+    if (files.length && state.assets) {
+      let k = 0;
+      for (const f of files) {
+        $("#t-msg").textContent = `Subiendo imagen ${++k} de ${files.length}…`;
+        try { raw.shots.push((await state.assets.upload(f)).id); }
+        catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo subir «${esc(f.name)}» (${esc(err.code || err.message)}).</span>`; }
+      }
     }
     await saveTrade(raw, v("#t-id") || null);
     const t = enrich(normalize(raw));
@@ -1116,7 +1135,8 @@ function renderOps() {
     {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
     {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
-    {h: "Captura", html: 1, f: t => t.shot ? `<a href="/_blob/${esc(t.shot)}" target="_blank" rel="noopener"><img src="/_blob/${esc(t.shot)}" alt="Captura" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>` : ""},
+    {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<span class="small muted">+${t.shots.length - 3}</span>` : ""}</span>`},
+    {h: "IA", html: 1, f: t => t.ai_analysis ? `<span class="pill up" title="${esc(t.ai_analysis)}">Analizada</span>` : t.shots.length && state.imgLimit ? `<button class="btn" data-analyze="${esc(t.id)}">Analizar</button>` : ""},
     {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
   ], [...ts].reverse());
 }
@@ -1129,6 +1149,91 @@ $("#o-table").addEventListener("click", async e => {
     const id = y.dataset.delYes;
     if (!col) { state.trades = state.trades.filter(t => t.id !== id); renderOps(); return; }
     try { await col.doc(id).delete(); } catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo borrar: ${esc(err.message || err.code)}</span>`; }
+  }
+});
+
+
+// =====================================================================
+// Imágenes y análisis de la operación con IA
+// =====================================================================
+function renderThumbs() {
+  const box = $("#t-thumbs"); if (!box) return;
+  const files = [...($("#t-shot")?.files || [])];
+  box.innerHTML = state.formShots.map(id => `<span class="thumb"><a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen guardada"></a><button type="button" data-unshot="${esc(id)}" aria-label="Quitar imagen">×</button></span>`).join("")
+    + files.map(f => `<span class="thumb"><img src="${URL.createObjectURL(f)}" alt="${esc(f.name)}"><span class="tag">nueva</span></span>`).join("");
+}
+$("#t-shot").addEventListener("change", renderThumbs);
+$("#t-thumbs").addEventListener("click", e => { const b = e.target.closest("[data-unshot]"); if (b) { state.formShots = state.formShots.filter(x => x !== b.dataset.unshot); renderThumbs(); } });
+
+function analysisPrompt(extra) {
+  const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
+  const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
+  return `${COACH}
+${stratTxt()}
+Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD o DXY (pueden ser antes de entrar, durante y el resultado).
+${extra || ""}
+Analízala como un trader profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG, order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
+Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
+Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
+Sesiones válidas: ${SESSIONS.join(" | ")}
+
+Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
+{"pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
+"entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null",
+"setup":"nombre corto del modelo de entrada","confluences":["..."],
+"analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
+"estrategia":"2-3 frases: qué estrategia/modelo refleja esta operación${state.profile ? " y cuánto encaja con su estrategia detectada" : ""}"}`;
+}
+function applyAnalysis(a) {
+  const setIf = (id, v) => { if (v != null && v !== "" && !$(id).value) $(id).value = v; };
+  const setSel = (id, v, ok) => { if (v && ok.includes(v)) $(id).value = v; };
+  setSel("#t-pair", a.pair, ["EURUSD", "DXY"]); setSel("#t-dir", a.direction, ["Long", "Short"]);
+  setSel("#t-tf", a.timeframe, ["M1", "M5", "M15", "M30", "H1", "H4"]); setSel("#t-session", a.session, SESSIONS);
+  for (const k of [["#t-entry", "entry"], ["#t-sl", "stop_loss"], ["#t-tp", "take_profit"], ["#t-exit", "exit_price"]]) setIf(k[0], num(a[k[1]]));
+  setIf("#t-setup", a.setup);
+  const chips = [...document.querySelectorAll("#t-confs .chip")], extra = [];
+  for (const c of (Array.isArray(a.confluences) ? a.confluences : [])) {
+    const chip = chips.find(x => x.textContent.toLowerCase() === String(c).toLowerCase());
+    if (chip) chip.setAttribute("aria-pressed", "true"); else extra.push(c);
+  }
+  if (extra.length) $("#t-conf-extra").value = [...tags($("#t-conf-extra").value), ...extra].join(", ");
+  if (a.result && num($("#t-r").value) == null && !$("#t-exit").value) $("#t-r").placeholder = a.result === "Win" ? "Ganadora: pon el R" : a.result === "Loss" ? "-1" : "0";
+  state.formAI = [a.analisis, a.estrategia].filter(Boolean).join("\n\n");
+}
+let shotCtl;
+$("#t-ai").addEventListener("click", async () => {
+  const out = $("#t-ai-out");
+  const files = [...$("#t-shot").files];
+  if (!files.length && !state.formShots.length) { out.innerHTML = `<span class="neg">Primero elige una o varias imágenes de la operación.</span>`; return; }
+  const btn = $("#t-ai"); btn.disabled = true;
+  out.innerHTML = `<span class="muted">Mirando el gráfico… (puede tardar hasta un minuto)</span>`;
+  try {
+    const blobs = [...files];
+    for (const id of state.formShots) { const b = await fetchBlob(id); if (b) blobs.push(b); }
+    shotCtl = new AbortController();
+    const a = await state.sample.json(analysisPrompt(), {images: blobs.slice(0, state.imgLimit), modelTier: "complex", signal: shotCtl.signal});
+    if (!a || typeof a !== "object") throw {code: "invalid_json"};
+    applyAnalysis(a);
+    out.innerHTML = `<b>Análisis de la IA</b> (he rellenado lo que se ve en la imagen; revísalo antes de guardar):\n` + mdLite(state.formAI);
+  } catch (e) {
+    out.innerHTML = `<span class="neg">${esc(e.code === "invalid_json" ? "No pude leer bien la imagen. Prueba con una captura más nítida." : AI_ERR[e.code] || "No se pudo analizar: " + (e.message || e.code))}</span>`;
+  } finally { btn.disabled = false; }
+});
+// Analizar una operación ya guardada a partir de sus imágenes
+$("#o-table").addEventListener("click", async e => {
+  const b = e.target.closest("[data-analyze]"); if (!b) return;
+  const t = state.trades.find(x => x.id === b.dataset.analyze); if (!t || !col) return;
+  b.disabled = true; b.textContent = "Analizando…";
+  try {
+    const blobs = []; for (const id of t.shots) { const x = await fetchBlob(id); if (x) blobs.push(x); }
+    if (!blobs.length) throw {message: "no se pudieron leer las imágenes"};
+    const a = await state.sample.json(analysisPrompt(`Datos ya registrados de esta operación: ${JSON.stringify({fecha: t.date, par: t.pair, dir: t.direction, setup: t.setup, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}`), {images: blobs.slice(0, state.imgLimit), modelTier: "complex"});
+    const text = [a?.analisis, a?.estrategia].filter(Boolean).join("\n\n");
+    if (!text) throw {code: "invalid_json"};
+    await col.doc(t.id).update({ai_analysis: text});
+  } catch (err) {
+    b.disabled = false; b.textContent = "Reintentar";
+    b.title = AI_ERR[err.code] || err.message || err.code || "Error";
   }
 });
 
@@ -1204,9 +1309,10 @@ function renderStrategy() {
   const ts = state.trades, dec = ts.filter(t => t.win || t.loss), P = state.profile;
   const few = $("#s-few");
   few.hidden = dec.length >= 20;
-  few.innerHTML = dec.length < 10 ? `Llevas ${dec.length} operaciones cerradas. Para detectar tu estrategia con fiabilidad necesitas al menos 10 y lo ideal son 20 o más. <button class="btn" data-goto="operaciones">Añadir operaciones</button>`
-    : `Llevas ${dec.length} operaciones cerradas: la IA ya puede detectar tu estrategia, pero será más precisa a partir de 20-30.`;
-  $("#s-go").disabled = !state.sample || dec.length < 5;
+  few.innerHTML = !ts.length ? `Añade tu primera operación con su imagen y la IA detectará tu estrategia a partir de ella. <button class="btn" data-goto="operaciones">Añadir operación</button>`
+    : dec.length < 10 ? `Llevas ${ts.length} ${ts.length === 1 ? "operación" : "operaciones"}. La IA ya puede describir tu estrategia a partir de ${ts.length === 1 ? "ella y su imagen" : "ellas y sus imágenes"} (detección preliminar). Para saber qué te funciona y qué no, con estadística, hacen falta 10-20 o más.`
+    : `Llevas ${dec.length} operaciones cerradas: la IA ya puede detectar tu estrategia, y será más precisa a partir de 20-30.`;
+  $("#s-go").disabled = !state.sample || !ts.length;
   $("#s-go").textContent = P ? "Volver a detectar con mis últimas operaciones" : "Detectar mi estrategia con IA";
   $("#s-profile").hidden = !P;
   $("#s-name").textContent = P?.nombre || "Mi estrategia";
@@ -1225,7 +1331,7 @@ function renderStrategy() {
     $("#s-works").innerHTML = li(P.cuando_funciona); $("#s-fails").innerHTML = li(P.cuando_falla);
     $("#s-errors").innerHTML = li(P.errores); $("#s-rules").innerHTML = li(P.reglas);
   } else {
-    $("#s-status").textContent = dec.length >= 5 ? "Aún no has detectado tu estrategia con IA. Abajo tienes la huella calculada con tus datos." : "";
+    $("#s-status").textContent = ts.length ? "Aún no has detectado tu estrategia con IA. Pulsa el botón de arriba." : "";
   }
   // checklist previa
   const items = preItems(activeProfile());
@@ -1246,12 +1352,17 @@ function updatePre() {
 }
 $("#pre-list").addEventListener("change", updatePre);
 
+async function fetchBlob(id) { try { const r = await fetch("/_blob/" + id); return r.ok ? await r.blob() : null; } catch { return null; } }
+// Una imagen por operación: primero las mejores ganadoras, luego alguna perdedora
 async function shotBlobs(ts, max) {
+  const withShots = ts.filter(t => t.shots?.length);
+  const wins = withShots.filter(t => !t.loss).sort((a, b) => (b.r ?? 0) - (a.r ?? 0));
+  const losses = withShots.filter(t => t.loss).sort((a, b) => (a.r ?? 0) - (b.r ?? 0));
+  const order = [...wins.slice(0, Math.max(1, max - 1)), ...losses, ...wins.slice(Math.max(1, max - 1))];
   const out = [];
-  for (const t of ts) {
+  for (const t of order) {
     if (out.length >= max) break;
-    if (!t.shot) continue;
-    try { const r = await fetch("/_blob/" + t.shot); if (r.ok) out.push({t, blob: await r.blob()}); } catch {}
+    const blob = await fetchBlob(t.shots[0]); if (blob) out.push({t, blob});
   }
   return out;
 }
@@ -1266,13 +1377,15 @@ $("#s-go").addEventListener("click", async () => {
   let images = [];
   try {
     const lim = await state.sample.limits().catch(() => null);
-    if (lim?.images) images = await shotBlobs([...dec].sort((a, b) => (b.r ?? 0) - (a.r ?? 0)), Math.min(4, lim.images.maxCount));
+    if (lim?.images) images = await shotBlobs(ts, Math.min(5, lim.images.maxCount));
   } catch {}
   const prompt = `${COACH}
 
 Tu tarea: detectar la ESTRATEGIA real de este trader a partir de su journal: qué hace realmente (no lo que dice que hace), en qué condiciones gana y en cuáles pierde, y sus puntos clave. Basa cada afirmación en los datos y cita cifras (WR, R, nº de operaciones).
 ${ts.some(t => t.ejemplo) ? "AVISO: parte de las operaciones son de ejemplo (inventadas)." : ""}
-${images.length ? `Te adjunto ${images.length} capturas de gráfico de sus mejores operaciones: ${images.map((x, i) => `imagen ${i + 1} = ${x.t.date} ${x.t.pair} ${x.t.direction} ${fmtR(x.t.r)}`).join("; ")}. Úsalas para describir el modelo de entrada.` : ""}
+${ts.length < 10 ? `IMPORTANTE: solo hay ${ts.length} ${ts.length === 1 ? "operación" : "operaciones"}. Haz una detección PRELIMINAR: describe la estrategia que se ve en ${ts.length === 1 ? "esa operación" : "esas operaciones"} y en sus imágenes (contexto, modelo de entrada, confluencias, colocación de stop y objetivo, gestión). No inventes estadísticas; pon confianza "baja" y en puntos_clave indica qué datos debe registrar para confirmarla.` : ""}
+${images.length ? `Te adjunto ${images.length} imágenes de gráfico de sus operaciones: ${images.map((x, i) => `imagen ${i + 1} = ${x.t.date} ${x.t.pair} ${x.t.direction} ${x.t.result || ""} ${fmtR(x.t.r)}`).join("; ")}. Míralas con atención: estructura, zonas, liquidez, FVG/order blocks, dónde entra, dónde pone el stop y el objetivo. Úsalas para describir su modelo de entrada.` : ""}
+La columna analisis_ia del CSV contiene lo que la IA vio en las imágenes de cada operación.
 
 ESTADÍSTICAS: ${s.trades} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}, expectativa ${fmtR(s.exp)}, profit factor ${s.pf?.toFixed(2) ?? "—"}, plan cumplido ${fmtP(s.plan)}.
 FACTORES (% en perdedoras / % en ganadoras): ${D.causes.concat(D.traits).map(r => `${r.label}: ${fmtP(r.pl)} / ${fmtP(r.pw)}`).join("; ")}
@@ -1331,8 +1444,8 @@ async function askAI(out, prompt, opts = {}) {
   }
 }
 function compactCSV(ts, max = 400) {
-  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "news_nearby", "confluences", "mistakes", "notes"];
-  return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
+  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "news_nearby", "confluences", "mistakes", "notes", "analisis_ia"];
+  return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = c === "analisis_ia" ? (t.ai_analysis || "").slice(0, 500) : t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
 }
 const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados.`;
 function renderCoach() {
