@@ -1388,9 +1388,11 @@ function renderBriefing() {
       {h: "Resultado", html: 1, f: x => { const o = x.pairs?.[p]?.outcome; return !o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`; }}])], hist);
   $("#brief-news").innerHTML = (b.news || []).map(n => `<article>
       <div class="when">${esc(n.time || "")}<br>${esc(n.currency || "")}</div>
-      <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.status ? `<span class="pill ${n.status === "Publicado" ? "" : "warn"}">${esc(n.status)}</span>` : ""}</div>
+      <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.status ? `<span class="pill ${n.status === "Publicado" ? "" : n.status === "No confirmado" ? "down" : "warn"}">${esc(n.status)}</span>` : ""}</div>
         <div class="data">Prev. ${esc(n.forecast ?? "—")} · Ant. ${esc(n.previous ?? "—")} · Real ${esc(n.actual ?? "—")}</div>
-        <div class="small">${esc(n.explanation || "")}</div></div></article>`).join("") || `<p class="muted small">Sin noticias de alto impacto registradas.</p>`;
+        ${n.consenso && n.consenso !== "—" ? `<div class="small"><b>Consenso:</b> ${esc(n.consenso)}</div>` : ""}
+        <div class="small">${esc(n.explanation || "")}</div>
+        ${n.fuentes?.length || n.verificado ? `<details class="small"><summary class="muted">${n.verificado ? esc(n.verificado) : "Fuentes"}${n.fuentes?.length ? ` · ${n.fuentes.length} ${n.fuentes.length === 1 ? "fuente" : "fuentes"}` : ""}</summary><ul class="clean">${(n.fuentes || []).map(f => `<li><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.title)}</a></li>`).join("")}</ul></details>` : ""}</div></article>`).join("") || `<p class="muted small">Sin noticias de alto impacto registradas.</p>`;
   $("#brief-risks").innerHTML = (b.risks || []).map(r => `<li>${esc(r)}</li>`).join("");
   $("#brief-sources").innerHTML = (b.sources || []).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("");
   // fiabilidad
