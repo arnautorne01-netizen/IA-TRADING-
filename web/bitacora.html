@@ -87,6 +87,8 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.conf summary{cursor:pointer;list-style-position:inside}
+.conf ul{margin:4px 0 6px;padding-left:18px}
 a[href^="/_blob/"] img{cursor:zoom-in}
 #lb{position:fixed;inset:0;z-index:30;background:rgba(5,8,16,.92);display:flex;flex-direction:column}
 #lb[hidden]{display:none!important}
@@ -1336,6 +1338,12 @@ function renderBriefing() {
       <div class="price num">${esc(d.price ?? "")}</div>
       <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
       ${out}
+      ${d.confianza ? (() => { const C = d.confianza, li = a => (a || []).map(z => `<li>${esc(z)}</li>`).join("");
+        return `<details class="conf"><summary><span class="pill ${C.nivel === "alta" ? "up" : C.nivel === "baja" ? "down" : "warn"}">Confianza ${esc(C.nivel || "—")}</span> <span class="small muted">${C.fuentes ? `${esc(C.fuentes)} fuentes${C.medios ? ` de ${esc(C.medios)} medios` : ""}` : ""} · ¿por qué este %?</span></summary>
+          ${C.nota ? `<p class="small" style="margin:6px 0 0">${esc(C.nota)}</p>` : ""}
+          ${C.a_favor?.length ? `<div class="small"><b>Apoya el sesgo</b><ul>${li(C.a_favor)}</ul></div>` : ""}
+          ${C.en_contra?.length ? `<div class="small"><b>Va en contra</b><ul>${li(C.en_contra)}</ul></div>` : ""}
+          ${C.falta?.length ? `<div class="small muted"><b>Datos que faltan</b><ul>${li(C.falta)}</ul></div>` : ""}</details>`; })() : ""}
       ${d.scores ? `<div class="mix">${[["fundamental", "Fundamental · 60%"], ["tecnico", "Técnico · 30%"], ["sentimiento", "Sentimiento · 10%"]].map(([k, l]) => { const v = Math.max(-1, Math.min(1, Number(d.scores[k]) || 0));
         return `<div class="mix-row"><span>${l}</span><div class="dv" role="img" aria-label="${l}: ${v.toFixed(2)}"><i class="${v >= 0 ? "p" : "n"}" style="width:${Math.abs(v) * 50}%"></i></div><span class="num small ${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(2)}</span></div>`; }).join("")}</div>` : ""}
       ${d.fundamental ? `<p style="margin:0"><b>Fundamental:</b> ${esc(d.fundamental)}</p>` : ""}
