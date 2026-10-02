@@ -184,6 +184,17 @@ details summary{cursor:pointer;font-weight:600}
         <div class="tablebox" style="max-height:300px"><table id="brief-history"></table></div>
       </div>
     </div>
+    <div class="panel" id="acc-panel">
+      <div class="panel-head"><h3>Registro de aciertos de la IA</h3><button class="btn" id="acc-csv" type="button">Descargar registro</button></div>
+      <p class="muted small" style="margin:0">Cada mañana la IA comprueba si el sesgo del día anterior acertó (cierre frente a apertura) y lo anota aquí. Se mide el % de primera hora (antes de abrir Londres) y el % final del día. Los días entre 47% y 53% no cuentan: no había sesgo.</p>
+      <div class="kpis" id="acc-kpis"></div>
+      <div class="grid g2">
+        <div><h3 style="margin:0 0 6px">¿Los % son realistas?</h3><div class="tablebox"><table id="acc-calib"></table></div>
+          <p class="small muted" style="margin:6px 0 0">Si la IA dice 65% y acierta cerca del 65% de esas veces, sus porcentajes son fiables. Con menos de 20 días es pronto para sacar conclusiones.</p></div>
+        <div><h3 style="margin:0 0 6px">Día a día</h3><div class="tablebox" style="max-height:340px"><table id="acc-log"></table></div></div>
+      </div>
+      <div id="acc-msg" class="small"></div>
+    </div>
     <div class="panel" id="mtf-panel">
       <div class="panel-head">
         <div><h3>Estructura multitemporal y CRT pendientes</h3><div class="small muted">Velas de 4H a 3 meses, ancladas a las 17:00 de Nueva York (inicio del día forex)</div></div>
@@ -1327,7 +1338,7 @@ function renderBriefing() {
   picker.hidden = !bs.length;
   if (cur && bs.some(b => b.date === cur)) picker.value = cur;
   const b = bs.find(x => x.date === picker.value) || bs[0];
-  if (!b) { $("#pair-cards").innerHTML = ""; $("#brief-summary").textContent = "—"; return; }
+  if (!b) { $("#pair-cards").innerHTML = ""; $("#brief-summary").textContent = "—"; renderAccuracy(); return; }
   $("#brief-date").textContent = "Briefing del " + new Date(b.date + "T12:00:00").toLocaleDateString("es-ES", {weekday: "long", day: "numeric", month: "long"}) + (b.generated_at ? " · " + b.generated_at : "");
   $("#pair-cards").innerHTML = ["EURUSD", "DXY"].map(p => {
     const d = b.pairs?.[p]; if (!d) return "";
@@ -1383,11 +1394,61 @@ function renderBriefing() {
   $("#brief-risks").innerHTML = (b.risks || []).map(r => `<li>${esc(r)}</li>`).join("");
   $("#brief-sources").innerHTML = (b.sources || []).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("");
   // fiabilidad
-  const evals = bs.flatMap(x => ["EURUSD", "DXY"].map(p => x.pairs?.[p]?.outcome).filter(o => o && typeof o.hit === "boolean"));
-  $("#brief-accuracy").innerHTML = evals.length ? `<span class="num">${evals.filter(o => o.hit).length}/${evals.length}</span> aciertos de dirección (${(100 * evals.filter(o => o.hit).length / evals.length).toFixed(0)}%). Cuantos más días se registren, más fiable es esta cifra.`
+  const evals = renderAccuracy().filter(r => typeof r.hitFin === "boolean").map(r => ({hit: r.hitFin}));
+  $("#brief-accuracy").innerHTML = evals.length ? `<span class="num">${evals.filter(o => o.hit).length}/${evals.length}</span> aciertos de dirección (${(100 * evals.filter(o => o.hit).length / evals.length).toFixed(0)}%). <a href="#acc-panel">Ver el registro completo</a>.`
     : "Aún no hay días cerrados para medir el acierto. Cada mañana se comprueba si el sesgo del día anterior acertó.";
   $("#brief-hit").textContent = evals.length ? `${evals.filter(o => o.hit).length} de ${evals.length} acertados` : "";
 }
+// =====================================================================
+// Registro de aciertos del sesgo diario
+// =====================================================================
+function pctChange(o) { const m = String(o?.change ?? "").replace(",", ".").replace("−", "-").match(/[-+]?\d+(\.\d+)?/); return m ? +m[0] : null; }
+function accRecords() {
+  const out = [];
+  for (const b of state.briefings) for (const p of ["EURUSD", "DXY"]) {
+    const d = b.pairs?.[p], o = d?.outcome; if (!o) continue;
+    const ch = pctChange(o), fin = Number(d.prob_up), first = Number(b.updates?.[0]?.[p] ?? d.prob_up);
+    const up = ch != null && ch !== 0 ? ch > 0 : null;
+    const judge = pr => !isFinite(pr) || Math.abs(pr - 0.5) <= 0.03 ? null : up == null ? (pr === fin && typeof o.hit === "boolean" ? o.hit : null) : (pr > 0.5) === up;
+    out.push({date: b.date, pair: p, first, fin, change: o.change || "", up, hitFirst: judge(first), hitFin: judge(fin), conf: d.confianza?.nivel || ""});
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.pair.localeCompare(b.pair));
+}
+function renderAccuracy() {
+  const R = accRecords();
+  const rate = (arr, k) => { const v = arr.filter(r => typeof r[k] === "boolean"); return {n: v.length, h: v.filter(r => r[k]).length}; };
+  const fmt = x => x.n ? `${x.h}/${x.n} <span class="small muted">(${Math.round(100 * x.h / x.n)}%)</span>` : "—";
+  const days = [...new Set(R.map(r => r.date))];
+  let streak = 0; for (const d of days) { const rs = R.filter(r => r.date === d && typeof r.hitFin === "boolean"); if (!rs.length) continue; if (rs.every(r => r.hitFin)) streak++; else break; }
+  const tot = rate(R, "hitFin");
+  $("#acc-kpis").innerHTML = [["Aciertos (% final)", fmt(tot)], ["Aciertos (% de primera hora)", fmt(rate(R, "hitFirst"))],
+    ["EURUSD", fmt(rate(R.filter(r => r.pair === "EURUSD"), "hitFin"))], ["DXY", fmt(rate(R.filter(r => r.pair === "DXY"), "hitFin"))],
+    ["Días registrados", days.length], ["Racha actual", streak ? `${streak} ${streak === 1 ? "día" : "días"} acertando` : "—"]]
+    .map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
+  const buckets = [[0.53, 0.6, "53-60%"], [0.6, 0.7, "60-70%"], [0.7, 0.81, "70-80%"]].map(([a, b, l]) => {
+    const rs = R.filter(r => typeof r.hitFin === "boolean" && Math.max(r.fin, 1 - r.fin) > a - 1e-9 && Math.max(r.fin, 1 - r.fin) < b);
+    return {l, n: rs.length, said: rs.length ? rs.reduce((s, r) => s + Math.max(r.fin, 1 - r.fin), 0) / rs.length : null, real: rs.length ? rs.filter(r => r.hitFin).length / rs.length : null};
+  });
+  table($("#acc-calib"), [{h: "Dijo", f: x => x.l}, {h: "Días", n: 1, f: x => x.n}, {h: "Media", n: 1, f: x => x.said == null ? "—" : Math.round(100 * x.said) + "%"},
+    {h: "Acertó", n: 1, html: 1, f: x => x.real == null ? "—" : `<span class="${x.n >= 5 ? (x.real + 0.05 >= x.said ? "pos" : "neg") : ""}">${Math.round(100 * x.real)}%</span>`}], buckets);
+  const mark = h => h == null ? `<span class="muted small">—</span>` : `<span class="pill ${h ? "up" : "down"}">${h ? "✓" : "✗"}</span>`;
+  const side = pr => pr > 0.53 ? "↑" : pr < 0.47 ? "↓" : "=";
+  table($("#acc-log"), [{h: "Día", f: r => r.date}, {h: "Par", f: r => r.pair},
+    {h: "1ª hora", n: 1, f: r => `${side(r.first)} ${Math.round(100 * Math.max(r.first, 1 - r.first))}%`}, {h: "Final", n: 1, f: r => `${side(r.fin)} ${Math.round(100 * Math.max(r.fin, 1 - r.fin))}%`},
+    {h: "Movimiento", n: 1, f: r => r.change, cls: r => r.up == null ? "" : r.up ? "pos" : "neg"},
+    {h: "1ª hora", html: 1, f: r => mark(r.hitFirst)}, {h: "Final", html: 1, f: r => mark(r.hitFin)}], R);
+  return R;
+}
+$("#acc-csv").addEventListener("click", async () => {
+  const R = accRecords();
+  const csv = ["fecha,par,prob_subida_primera_hora,prob_subida_final,cambio_del_dia,acierto_primera_hora,acierto_final,confianza",
+    ...R.map(r => [r.date, r.pair, r.first, r.fin, `"${r.change}"`, r.hitFirst == null ? "" : r.hitFirst ? "si" : "no", r.hitFin == null ? "" : r.hitFin ? "si" : "no", r.conf].join(","))].join("\n");
+  const dl = await use("downloads");
+  if (!dl) { $("#acc-msg").textContent = "La descarga no está disponible en esta vista."; return; }
+  try { await dl.save({filename: "registro-aciertos-sesgo.csv", data: csv}); $("#acc-msg").textContent = "Descarga lista."; }
+  catch (e) { $("#acc-msg").textContent = e.code === "cancelled" || e.code === "declined" ? "Descarga cancelada." : "No se pudo descargar: " + (e.message || e.code); }
+});
+
 $("#brief-picker").addEventListener("change", renderBriefing);
 
 // =====================================================================
