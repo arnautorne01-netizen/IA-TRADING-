@@ -87,6 +87,14 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.news .res{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font:500 .9rem var(--f-mono)}
+.news .res .act{font-size:1.25rem;font-weight:700}
+.news .res .neu{color:var(--muted)}
+.cd{font:600 .82rem var(--f-mono)}
+.cd.hot{display:inline-block;margin-top:4px;padding:4px 10px;border-radius:6px;background:var(--down);color:#fff;font-size:1.1rem;letter-spacing:.04em}
+.cd.wait{color:var(--warn,#b7791f)}
+#cd-float{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:25;background:var(--down);color:#fff;padding:10px 16px;border-radius:999px;font:600 .95rem var(--f-mono);box-shadow:0 4px 18px rgba(0,0,0,.25);max-width:calc(100vw - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+#cd-float[hidden]{display:none!important}
 .conf summary{cursor:pointer;list-style-position:inside}
 .conf ul{margin:4px 0 6px;padding-left:18px}
 a[href^="/_blob/"] img{cursor:zoom-in}
@@ -525,6 +533,7 @@ details summary{cursor:pointer;font-weight:600}
     </div>
   </section>
 </main>
+<div id="cd-float" hidden role="status" aria-live="polite"></div>
 <div id="deep-modal" hidden style="position:fixed;inset:0;z-index:20;background:rgba(10,15,30,.55);overflow-y:auto;padding:max(16px,env(safe-area-inset-top,0px)) 16px 16px">
   <div class="panel" role="dialog" aria-modal="true" aria-label="Análisis a fondo" style="max-width:960px;margin:0 auto">
     <div class="row" style="justify-content:flex-end"><button class="btn" id="deep-close">Cerrar</button></div>
@@ -1388,13 +1397,15 @@ function renderBriefing() {
       {h: "Resultado", html: 1, f: x => { const o = x.pairs?.[p]?.outcome; return !o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`; }}])], hist);
   $("#news-upd").textContent = b.news_updated ? `Actualizadas ${b.news_updated} · hora de Madrid` : "Hora de Madrid";
   const newsSorted = [...(b.news || []).filter(n => n.tipo === "ultima_hora"), ...(b.news || []).filter(n => n.tipo !== "ultima_hora")];
+  cdEvents = b.date === todayISO() ? (b.news || []).filter(n => n.tipo !== "ultima_hora").map(n => ({n, at: newsAt(n, b.date), done: isPublished(n), key: b.date + "|" + n.title + "|" + n.time})).filter(e => e.at != null) : [];
   $("#brief-news").innerHTML = newsSorted.map(n => `<article>
       <div class="when">${esc(n.time || "")}<br>${esc(n.currency || "")}</div>
       <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.tipo === "ultima_hora" ? `<span class="pill down">Última hora</span>` : ""}${n.status && n.tipo !== "ultima_hora" ? `<span class="pill ${n.status === "Publicado" ? "" : n.status === "No confirmado" ? "down" : "warn"}">${esc(n.status)}</span>` : ""}</div>
-        ${n.tipo === "ultima_hora" ? "" : `<div class="data">Prev. ${esc(n.forecast ?? "—")} · Ant. ${esc(n.previous ?? "—")} · Real ${esc(n.actual ?? "—")}</div>`}
+        ${n.tipo === "ultima_hora" ? "" : newsDataLine(n, b.date)}
         ${n.consenso && n.consenso !== "—" ? `<div class="small"><b>Consenso:</b> ${esc(n.consenso)}</div>` : ""}
         <div class="small">${esc(n.explanation || "")}</div>
         ${n.fuentes?.length || n.verificado ? `<details class="small"><summary class="muted">${n.verificado ? esc(n.verificado) : "Fuentes"}${n.fuentes?.length ? ` · ${n.fuentes.length} ${n.fuentes.length === 1 ? "fuente" : "fuentes"}` : ""}</summary><ul class="clean">${(n.fuentes || []).map(f => `<li><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.title)}</a></li>`).join("")}</ul></details>` : ""}</div></article>`).join("") || `<p class="muted small">Sin noticias de alto impacto registradas.</p>`;
+  tickCountdowns();
   $("#brief-risks").innerHTML = (b.risks || []).map(r => `<li>${esc(r)}</li>`).join("");
   $("#brief-sources").innerHTML = (b.sources || []).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("");
   // fiabilidad
@@ -1403,6 +1414,72 @@ function renderBriefing() {
     : "Aún no hay días cerrados para medir el acierto. Cada mañana se comprueba si el sesgo del día anterior acertó.";
   $("#brief-hit").textContent = evals.length ? `${evals.filter(o => o.hit).length} de ${evals.length} acertados` : "";
 }
+// =====================================================================
+// Noticias del día: cuenta atrás y resultado (anterior → actual)
+// =====================================================================
+const DATA_TRIGGER = "trig_01WEyc66CkDjE6pXB2BJfCuQ";
+var cdEvents = [];
+function madridOffsetMin(d) {
+  try { const v = new Intl.DateTimeFormat("en-US", {timeZone: "Europe/Madrid", timeZoneName: "shortOffset"}).formatToParts(d).find(p => p.type === "timeZoneName").value;
+    const m = v.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/); return m ? (m[1] === "-" ? -1 : 1) * (+m[2] * 60 + +(m[3] || 0)) : 0; } catch { return 60; }
+}
+function newsAt(n, date) {
+  if (n.at) { const t = Date.parse(n.at); if (!isNaN(t)) return t; }
+  const m = String(n.time || "").match(/^\s*Hoy\b\D*?(\d{1,2}):(\d{2})/i); if (!m || !date) return null;
+  const [y, mo, d] = date.split("-").map(Number), guess = Date.UTC(y, mo - 1, d, +m[1], +m[2]);
+  return guess - madridOffsetMin(new Date(guess)) * 6e4;
+}
+const isPublished = n => n.actual != null && String(n.actual).trim() !== "" && n.status !== "Pendiente";
+function firstNum(v) {
+  const s = String(v ?? ""); const m = s.match(/mediana[^\d-]*(-?\d+(?:[.,]\d+)?)/i) || s.match(/(-?\d+(?:[.,]\d+)?)/);
+  return m ? parseFloat(m[1].replace(",", ".")) : null;
+}
+function dataTone(n) {
+  if (["positivo", "negativo", "neutral"].includes(n.sesgo_dato)) return n.sesgo_dato;
+  const a = firstNum(String(n.actual).split("·")[0]), f = firstNum(n.forecast) ?? firstNum(n.previous);
+  if (a == null || f == null) return null;
+  if (Math.abs(a - f) < 1e-9) return "neutral";
+  const inverse = /paro|desempleo|subsidio|peticiones|unemployment|claims/i.test(n.title || "");
+  return (inverse ? a < f : a > f) ? "positivo" : "negativo";
+}
+function newsDataLine(n, date) {
+  if (isPublished(n)) {
+    const parts = String(n.actual).split(" · "), tone = dataTone(n), c = tone === "positivo" ? "pos" : tone === "negativo" ? "neg" : "neu";
+    const what = tone ? `${tone === "positivo" ? "Mejor" : tone === "negativo" ? "Peor" : "En línea con lo"} de lo previsto para el ${esc(n.currency || "")}`.replace("En línea con lo de lo previsto", "En línea con lo previsto") : "";
+    return `<div class="res"><span class="small muted">Anterior</span><span>${esc(n.previous ?? "—")}</span><span aria-hidden="true">→</span><span class="small muted">Actual</span><span class="act ${c}" title="${esc(what)}">${esc(parts[0])}</span>${n.forecast ? `<span class="small muted">· Prev. ${esc(n.forecast)}</span>` : ""}</div>
+      ${parts.length > 1 ? `<div class="small">${esc(parts.slice(1).join(" · "))}</div>` : ""}
+      ${what ? `<div class="small ${c}">${what}</div>` : ""}${n.reaccion ? `<div class="small muted">Reacción: ${esc(n.reaccion)}</div>` : ""}`;
+  }
+  const at = newsAt(n, date);
+  return `<div class="data">Prev. ${esc(n.forecast ?? "—")} · Ant. ${esc(n.previous ?? "—")}</div>${at != null && date === todayISO() ? `<div class="cd" data-cd="${at}"></div>` : ""}`;
+}
+const pad2 = x => String(x).padStart(2, "0");
+function fmtLeft(ms) { const s = Math.ceil(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `en ${h} h ${pad2(m)} min` : `en ${m} min`; }
+async function fireDataFetch(e) {
+  let k = "fired:" + e.key; try { if (localStorage.getItem(k)) return; localStorage.setItem(k, "1"); } catch {}
+  const mcp = await use("mcp"); if (!mcp) return;
+  try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: DATA_TRIGGER, text: `Evento: ${e.n.title} (${e.n.time}, ${e.n.currency || ""}). Previsión: ${e.n.forecast ?? "—"}. Anterior: ${e.n.previous ?? "—"}.`}); }
+  catch (err) { console.warn("fire_trigger dato", err?.code); try { localStorage.removeItem(k); } catch {} }
+}
+function tickCountdowns() {
+  const now = Date.now();
+  document.querySelectorAll("[data-cd]").forEach(el => {
+    const left = +el.dataset.cd - now;
+    if (left > 120000) { el.className = "cd muted"; el.textContent = fmtLeft(left); }
+    else if (left > 0) { const s = Math.ceil(left / 1000); el.className = "cd hot"; el.textContent = `⏱ ${pad2(Math.floor(s / 60))}:${pad2(s % 60)}`; }
+    else if (left > -60000) { el.className = "cd hot"; el.textContent = "¡Sale ahora!"; }
+    else { el.className = "cd wait"; el.textContent = "Publicado · esperando el dato oficial (la IA lo está buscando)…"; }
+  });
+  const hot = cdEvents.filter(e => !e.done && e.at - now <= 120000 && e.at - now > -60000).sort((a, b) => a.at - b.at)[0];
+  const fl = $("#cd-float");
+  if (hot) { const left = hot.at - now, s = Math.max(0, Math.ceil(left / 1000));
+    fl.textContent = left > 0 ? `⏱ ${hot.n.currency || ""} ${hot.n.title} · ${pad2(Math.floor(s / 60))}:${pad2(s % 60)}` : `¡Sale ahora! ${hot.n.title}`; fl.hidden = false; }
+  else fl.hidden = true;
+  cdEvents.filter(e => !e.done && now - e.at > 30000 && now - e.at < 3 * 3600e3).forEach(fireDataFetch);
+}
+$("#cd-float").addEventListener("click", () => { document.querySelector('[data-tab="hoy"]')?.click(); $("#brief-news")?.scrollIntoView({behavior: "smooth", block: "start"}); });
+setInterval(tickCountdowns, 1000);
+
 // =====================================================================
 // Registro de aciertos del sesgo diario
 // =====================================================================
