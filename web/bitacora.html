@@ -87,6 +87,10 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:6px 0}
+.seg button{font:inherit;font-size:.85rem;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill.bt{background:var(--accent-soft);color:var(--accent)}
 .news .res{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font:500 .9rem var(--f-mono)}
 .news .res .act{font-size:1.25rem;font-weight:700}
 .news .res .neu{color:var(--muted)}
@@ -154,6 +158,7 @@ details summary{cursor:pointer;font-weight:600}
       <h1>Bitácora <span>EURUSD·DXY</span></h1>
       <span class="muted small" id="who">Cargando tu journal…</span>
     </div>
+    <div class="seg" id="cuenta-seg" role="group" aria-label="Qué operaciones ver"><span class="small muted">Ver:</span><button type="button" data-cuenta="todas">Todas</button><button type="button" data-cuenta="Real">Real</button><button type="button" data-cuenta="Backtest">Backtest</button></div>
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="hoy" aria-selected="true">Sesgo de hoy</button>
       <button role="tab" data-tab="operaciones" aria-selected="false">Mis operaciones</button>
@@ -379,6 +384,7 @@ details summary{cursor:pointer;font-weight:600}
         <b style="font-size:1.1rem">Suelta aquí las capturas de tus operaciones</b>
         <span class="small muted">O pulsa para elegirlas, o pégalas con Ctrl+V. La IA detecta la operación, la guarda y actualiza tu estrategia. No tienes que escribir nada.<br>Puedes soltar capturas de varias operaciones a la vez: la IA las separa.</span>
         <input type="file" id="auto-file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+      <div class="seg" id="auto-cuenta" role="radiogroup" aria-label="Tipo de capturas"><span class="small muted">Estas capturas son de:</span><button type="button" data-ac="auto" aria-pressed="true">Detectar sola</button><button type="button" data-ac="Real" aria-pressed="false">Trading real</button><button type="button" data-ac="Backtest" aria-pressed="false">Backtesting</button></div>
       <div id="auto-pending" class="banner warn" hidden></div>
       <div id="auto-out" style="display:flex;flex-direction:column;gap:10px"></div>
       <p class="small muted" style="margin:0">Para que la IA lea bien el resultado, usa capturas donde se vean la herramienta de posición (entrada, SL y TP), la escala de precios y las fechas del eje.</p>
@@ -396,6 +402,7 @@ details summary{cursor:pointer;font-weight:600}
         <div id="t-ai-out" class="ai-out small"></div>
       </div>
       <div class="grid g3">
+        <label>Cuenta<select id="t-cuenta"><option value="Real">Trading real</option><option value="Backtest">Backtesting</option></select></label>
         <label>Fecha<input type="date" id="t-date" required></label>
         <label>Hora de entrada<input type="time" id="t-time"></label>
         <label>Par<select id="t-pair"><option>EURUSD</option><option>DXY</option></select></label>
@@ -640,6 +647,8 @@ function normalize(raw) {
   t.ai_analysis = raw.ai_analysis ? String(raw.ai_analysis) : "";
   t.ext_id = raw.ext_id ? String(raw.ext_id) : "";
   t.deep_analysis = raw.deep_analysis && typeof raw.deep_analysis === "object" ? raw.deep_analysis : null;
+  t.cuenta = /^back/i.test(String(raw.cuenta || "")) ? "Backtest" : "Real";
+  t.fecha_estimada = !!raw.fecha_estimada;
   return t;
 }
 // Campos derivados para el análisis
@@ -814,8 +823,9 @@ async function boot() {
   if (!state.uid) { banner("No se pudo identificar tu cuenta: el journal no se guardará."); return; }
   col = db.collection("data/users/" + state.uid);
   col.onSnapshot(snap => {
-    state.trades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
+    state.allTrades = snap.docs.map(d => ({id: d.id, ...d.data()})).filter(d => d.kind === "trade").map(enrich)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    applyCuentaView();
     state.pending = snap.docs.filter(d => d.data()?.kind === "pending_shots").length; renderPending();
     state.pendingDeep = new Set(snap.docs.filter(d => d.data()?.kind === "pending_deep").map(d => d.data().trade_id));
     const prof = snap.docs.find(d => d.id === "strategy_profile");
@@ -824,7 +834,8 @@ async function boot() {
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
     state.loaded = true;
-    $("#who").textContent = `${state.trades.length} operaciones en tu journal`;
+    const nR = state.allTrades.filter(t => t.cuenta === "Real").length;
+    $("#who").textContent = `${state.allTrades.length} operaciones en tu journal · ${nR} reales · ${state.allTrades.length - nR} de backtesting`;
     renderAll();
   }, e => banner("No se pudo leer tu journal: " + e.message));
   db.collection("market").onSnapshot(snap => {
@@ -847,7 +858,7 @@ async function saveTrade(raw, id) {
   const data = {kind: "trade", ...t, updated: new Date().toISOString()};
   if (!col) { // modo sin guardar
     const lid = "local" + Math.random().toString(36).slice(2);
-    state.trades.push(enrich({id: lid, ...data})); renderAll(); return lid;
+    state.allTrades.push(enrich({id: lid, ...data})); applyCuentaView(); renderAll(); return lid;
   }
   const ref = id ? col.doc(id) : col.doc("t_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
   await ref.set(data);
@@ -1064,7 +1075,7 @@ function toggleChip(e) { const c = e.target.closest(".chip"); if (c) c.setAttrib
 function fillForm(t) {
   $("#t-id").value = t.id; $("#t-form-title").textContent = "Editar operación del " + t.date; $("#t-cancel").hidden = false; $("#t-save").textContent = "Guardar cambios";
   const set = (id, v) => $(id).value = v ?? "";
-  set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
+  set("#t-cuenta", t.cuenta || "Real"); set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
   set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
   set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
@@ -1085,7 +1096,7 @@ $("#t-form").addEventListener("submit", async e => {
   const v = id => $(id).value;
   const hasPrices = num(v("#t-entry")) != null && num(v("#t-sl")) != null && num(v("#t-exit")) != null;
   if (!hasPrices && num(v("#t-r")) == null) { $("#t-msg").innerHTML = `<span class="neg">Pon entrada, stop y salida, o el R conseguido.</span>`; return; }
-  const raw = {date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
+  const raw = {cuenta: v("#t-cuenta"), fecha_estimada: state.editing && state.editing.date === v("#t-date") ? state.editing.fecha_estimada : false, date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
     daily_bias: v("#t-bias"), volume: v("#t-vol"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
     followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
     confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
@@ -1318,7 +1329,7 @@ $("#csv-file").addEventListener("change", async e => {
   e.target.value = "";
 });
 $("#csv-export").addEventListener("click", async () => {
-  const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
+  const cols = ["cuenta", "date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
   const q = v => { const s = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [cols.join(","), ...state.trades.map(t => cols.map(c => q(t[c])).join(","))].join("\n");
   const dl = await use("downloads");
@@ -1758,7 +1769,7 @@ function renderOps() {
   $("#o-table").parentElement.hidden = !ts.length;
   const P = activeProfile();
   table($("#o-table"), [
-    {h: "Fecha", f: t => t.date + (t.time ? " " + t.time : "")}, {h: "Operación", f: t => `${t.pair} ${t.direction}`}, {h: "Sesión", f: t => t.session},
+    {h: "Fecha", f: t => (t.fecha_estimada ? "≈ " : "") + t.date + (t.time ? " " + t.time : "")}, {h: "Cuenta", html: 1, f: t => cuentaPill(t)}, {h: "Operación", f: t => `${t.pair} ${t.direction}`}, {h: "Sesión", f: t => t.session},
     {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
     {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
     {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
@@ -1775,7 +1786,7 @@ $("#o-table").addEventListener("click", async e => {
   const y = e.target.closest("[data-del-yes]");
   if (y) {
     const id = y.dataset.delYes;
-    if (!col) { state.trades = state.trades.filter(t => t.id !== id); renderOps(); return; }
+    if (!col) { state.allTrades = state.allTrades.filter(t => t.id !== id); applyCuentaView(); renderOps(); return; }
     try { await col.doc(id).delete(); } catch (err) { $("#t-msg").innerHTML = `<span class="neg">No se pudo borrar: ${esc(err.message || err.code)}</span>`; }
   }
 });
@@ -1892,8 +1903,9 @@ Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
 Estructura actual del mercado: ${mtfText("EURUSD") || "no disponible"}
 
+${CUENTA_RULE()}
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
-{"operaciones":[{"imagenes":[1,2],"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|DXY","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
+{"operaciones":[{"imagenes":[1,2],"cuenta":"Real|Backtest","fecha_estimada":true|false,"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|DXY","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
@@ -1932,12 +1944,13 @@ async function autoFromImages(list) {
         const pair = ["EURUSD", "DXY"].includes(op.pair) ? op.pair : "EURUSD";
         const confs = (Array.isArray(op.confluences) ? op.confluences : []).map(String);
         fixOutcome(op);
-        const raw = {date, time, pair, direction: op.direction === "Short" ? "Short" : "Long", timeframe: op.timeframe || "",
+        const cuenta = state.autoCuenta !== "auto" ? state.autoCuenta : op.cuenta === "Backtest" ? "Backtest" : "Real";
+        const raw = {cuenta, fecha_estimada: !!op.fecha_estimada || !op.date, date, time, pair, direction: op.direction === "Short" ? "Short" : "Long", timeframe: op.timeframe || "",
           session: SESSIONS.includes(op.session) ? op.session : sessionFromMadridHour(time ? +time.slice(0, 2) : NaN),
           daily_bias: biasFromBriefing(date, pair), entry: op.entry, stop_loss: op.stop_loss, take_profit: op.take_profit, exit_price: op.exit_price,
           r: op.exit_price == null ? (num(op.r) ?? null) : null, result: op.result || null,
           setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"), deep_analysis: op.analisis_profundo?.pasos ? op.analisis_profundo : null,
-          notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy)"}`};
+          notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy, corrígela)"}`};
         const id = await saveTrade(raw);
         const t = enrich(normalize(raw));
         saved++;
@@ -2015,6 +2028,29 @@ document.addEventListener("click", e => {
   const list = g ? g.dataset.shots.split(",").filter(Boolean) : [...(a.closest(".thumbs") || a.parentElement).querySelectorAll('a[href^="/_blob/"]')].map(x => x.getAttribute("href").slice(7));
   openLightbox(list, Math.max(0, list.indexOf(id)));
 });
+
+// =====================================================================
+// Real / Backtest
+// =====================================================================
+state.autoCuenta = "auto";
+document.querySelectorAll("#auto-cuenta [data-ac]").forEach(b => b.addEventListener("click", () => {
+  state.autoCuenta = b.dataset.ac; document.querySelectorAll("#auto-cuenta [data-ac]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+}));
+const CUENTA_RULE = () => `REAL O BACKTEST Y FECHA (muy importante): ${state.autoCuenta === "Real" ? "el trader dice que estas capturas son de TRADING REAL: cuenta = \"Real\"." : state.autoCuenta === "Backtest" ? "el trader dice que estas capturas son de BACKTESTING: cuenta = \"Backtest\"." : "si en el gráfico aparece la marca de agua «Reproducción» o «Replay» (modo repetición de TradingView), es BACKTESTING: cuenta = \"Backtest\"; si no, cuenta = \"Real\"."} La línea de arriba «… creado con TradingView.com, el <fecha>» es la fecha en que se hizo la CAPTURA, NO la fecha de la operación: no la uses como fecha de la operación en backtesting. Saca la fecha del EJE DE TIEMPO (el número de día que aparece en el eje, p. ej. «18», marca el cambio de día). Si solo ves el día y no el mes o el año, pon en "date" tu mejor estimación y "fecha_estimada": true; si no ves ni el día, "date": null y "fecha_estimada": true.`;
+state.allTrades = [];
+state.cuentaView = (() => { try { return localStorage.getItem("cuentaView") || "todas"; } catch { return "todas"; } })();
+function applyCuentaView() {
+  const v = state.cuentaView;
+  state.trades = v === "todas" ? [...state.allTrades] : state.allTrades.filter(t => t.cuenta === v);
+  document.querySelectorAll("#cuenta-seg [data-cuenta]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.cuenta === v)));
+}
+document.querySelectorAll("#cuenta-seg [data-cuenta]").forEach(b => b.addEventListener("click", () => {
+  state.cuentaView = b.dataset.cuenta; try { localStorage.setItem("cuentaView", state.cuentaView); } catch {}
+  applyCuentaView(); renderAll();
+}));
+applyCuentaView();
+const cuentaPill = t => t.cuenta === "Backtest" ? `<span class="pill bt" title="Operación de backtesting (modo Replay)">Backtest</span>` : `<span class="pill up" title="Operación real">Real</span>`;
+const realTrades = () => (state.allTrades || []).filter(t => t.cuenta === "Real");
 
 // =====================================================================
 // Análisis a fondo, paso a paso, de cada operación
@@ -2113,7 +2149,7 @@ async function queueShots(files) {
     box.textContent = "Subiendo las capturas…";
     const shots = [];
     for (const f of files) shots.push((await state.assets.upload(f)).id);
-    await col.doc("pending_" + Date.now().toString(36)).set({kind: "pending_shots", shots, created: new Date().toISOString()});
+    await col.doc("pending_" + Date.now().toString(36)).set({kind: "pending_shots", shots, cuenta: state.autoCuenta, created: new Date().toISOString()});
     let fired = false;
     const mcp = await use("mcp");
     if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader acaba de subir capturas nuevas."}); fired = true; } catch (err) { console.warn("fire_trigger", err?.code); } }
@@ -2473,9 +2509,10 @@ function behaviorPatterns(all) {
   return P.sort((x, y) => order[x.level] - order[y.level]);
 }
 function renderBehavior() {
-  const ts = state.trades.filter(t => t.win || t.loss || t.result === "BE");
+  const ts = realTrades().filter(t => t.win || t.loss || t.result === "BE");
+  const nBt = (state.allTrades || []).length - realTrades().length;
   $("#b-empty").hidden = ts.length >= 5;
-  $("#b-empty").innerHTML = `Para detectar patrones de comportamiento hacen falta al menos 5 operaciones cerradas (llevas ${ts.length}). Cuantas más, más fiables. <button class="btn" data-goto="operaciones">Añadir operaciones</button>`;
+  $("#b-empty").innerHTML = `Aquí solo cuentan tus operaciones <b>reales</b>: el backtesting no refleja tus emociones, tu frecuencia ni tus horarios reales${nBt ? ` (${nBt} de backtesting no se usan)` : ""}. Para detectar patrones hacen falta al menos 5 operaciones reales cerradas (llevas ${ts.length}). <button class="btn" data-goto="operaciones">Añadir operaciones</button>`;
   const P = ts.length >= 5 ? behaviorPatterns(ts) : [];
   const lbl = {alerta: ["Alerta", "down"], atencion: ["Atención", "warn"], bien: ["Bien", "up"], info: ["Dato", ""]};
   const counts = P.reduce((c, p) => (c[p.level] = (c[p.level] || 0) + 1, c), {});
@@ -2491,12 +2528,13 @@ function renderBehavior() {
 }
 let behCtl;
 $("#b-ai").addEventListener("click", async () => {
-  const ts = state.trades;
-  if (!ts.length) { $("#b-ai-out").textContent = "Registra operaciones primero."; return; }
+  const ts = realTrades();
+  if (!ts.length) { $("#b-ai-out").textContent = "Aún no hay operaciones reales: el análisis de comportamiento solo usa trading real (el backtesting no refleja tus emociones ni tu frecuencia real)."; return; }
   const P = behaviorPatterns(ts);
   const prompt = `${COACH}
 ${stratTxt()}
 Eres también especialista en psicología del trading. Analiza el COMPORTAMIENTO de este trader (no su análisis técnico): hábitos, sesgos psicológicos (revancha, exceso de confianza, miedo a perder, aversión a cerrar pérdidas, FOMO, sobreoperar, impaciencia), disciplina y gestión emocional. Basa cada afirmación en los datos y cita cifras.
+IMPORTANTE: estas son SOLO sus operaciones de trading real (${ts.length}). Además tiene ${(state.allTrades || []).length - ts.length} operaciones de backtesting que NO debes usar para hablar de frecuencia, horarios, rachas ni emociones. Con pocas operaciones reales, dilo claramente y no saques conclusiones fuertes.
 PATRONES DETECTADOS POR LAS REGLAS: ${P.map(p => `[${p.level}] ${p.title}: ${p.text}`).join(" | ")}
 OPERACIONES EN ORDEN CRONOLÓGICO (CSV):
 ${compactCSV([...ts].sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || ""))))}
@@ -2535,7 +2573,7 @@ function compactCSV(ts, max = 400) {
   const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "confluences", "mistakes", "notes", "analisis_ia"];
   return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = c === "analisis_ia" ? (t.ai_analysis || "").slice(0, 500) : t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
 }
-const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados.`;
+const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados. Cada operación tiene una columna «cuenta»: Real (trading real) o Backtest (backtesting en modo Reproducción). El backtesting sirve para validar el modelo de entrada, pero NO para hablar de frecuencia diaria, horarios reales, rachas, emociones ni sobreoperar; distingue siempre los resultados reales de los de backtesting.`;
 function renderCoach() {
   const sel = $("#c-trade"), cur = sel.value;
   sel.innerHTML = [...state.trades].reverse().map(t => `<option value="${esc(t.id)}">${esc(t.date)} · ${esc(t.pair)} ${esc(t.direction)} · ${fmtR(t.r)} ${esc(t.result || "")}</option>`).join("");
