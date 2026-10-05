@@ -158,6 +158,7 @@ details summary{cursor:pointer;font-weight:600}
       <h1>Bitácora <span>de trading</span></h1>
       <span class="muted small" id="who">Cargando tu journal…</span>
     </div>
+    <div class="seg" id="mercado-seg" role="group" aria-label="Mercado"><span class="small muted">Mercado:</span><button type="button" data-mercado="fx">FX</button><button type="button" data-mercado="fut">Futuros</button><button type="button" data-mercado="todo">Todo</button></div>
     <div class="seg" id="cuenta-seg" role="group" aria-label="Qué operaciones ver"><span class="small muted">Ver:</span><button type="button" data-cuenta="todas">Todas</button><button type="button" data-cuenta="Real">Real</button><button type="button" data-cuenta="Backtest">Backtest</button></div>
     <nav class="tabs" role="tablist" id="tabs">
       <button role="tab" data-tab="hoy" aria-selected="true">Sesgo de hoy</button>
@@ -584,14 +585,24 @@ const RED_FLAGS = ["contra_sesgo","sin_plan","emocion_negativa","noticia_cerca",
 
 // Reglas de noticias: [etiqueta, dirección (+1 dato mayor = divisa fuerte), peso, explicación]
 const INSTR = [
-  {id: "EURUSD", label: "EURUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Euro FX (6E, CME)"},
-  {id: "GBPUSD", label: "GBPUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Libra (6B, CME)"},
-  {id: "DXY", label: "DXY", dec: 3, pip: 0.01, unit: "ptos", fut: "Futuros del dólar (DX, ICE)"},
-  {id: "NAS100", label: "Nasdaq 100", dec: 1, pip: 1, unit: "ptos", fut: "E-mini Nasdaq (NQ, CME)"},
-  {id: "SPX500", label: "S&P 500", dec: 1, pip: 1, unit: "ptos", fut: "E-mini S&P 500 (ES, CME)"},
+  {id: "EURUSD", label: "EURUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Euro FX (6E, CME)", grupo: "fx"},
+  {id: "GBPUSD", label: "GBPUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Libra (6B, CME)", grupo: "fx"},
+  {id: "DXY", label: "DXY", dec: 3, pip: 0.01, unit: "ptos", fut: "Futuros del dólar (DX, ICE)", grupo: "fx"},
+  {id: "NAS100", label: "Nasdaq 100", dec: 1, pip: 1, unit: "ptos", fut: "E-mini Nasdaq (NQ, CME)", grupo: "fut"},
+  {id: "SPX500", label: "S&P 500", dec: 1, pip: 1, unit: "ptos", fut: "E-mini S&P 500 (ES, CME)", grupo: "fut"},
 ];
 const PAIRS = INSTR.map(i => i.id);
 const INS = id => INSTR.find(i => i.id === id) || INSTR[0];
+const MERCADOS = {fx: "FX", fut: "Futuros", todo: "Todo"};
+const VIS = () => PAIRS.filter(p => state.mercado === "todo" || INS(p).grupo === (state.mercado || "fx"));
+const inMercado = pair => state.mercado === "todo" || INS(pair).grupo === (state.mercado || "fx");
+function newsMercado(n) {
+  if (["fx", "futuros", "ambos"].includes(n.mercado)) return n.mercado;
+  if (n.currency === "EUR" || n.currency === "GBP") return "fx";
+  if (/resultados|earnings|\bBPA\b|nvidia|apple|microsoft|amazon|alphabet|meta\b|tesla|broadcom|wall street|nasdaq|s&p/i.test((n.title || "") + " " + (n.explanation || "").slice(0, 120))) return "futuros";
+  return "ambos";
+}
+const newsVisible = n => state.mercado === "todo" || newsMercado(n) === "ambos" || newsMercado(n) === (state.mercado === "fut" ? "futuros" : "fx");
 function canonPair(sym) {
   const s = String(sym || "").toUpperCase().replace(/[^A-Z0-9&]/g, "");
   if (!s) return null;
@@ -1377,7 +1388,7 @@ function renderBriefing() {
   const b = bs.find(x => x.date === picker.value) || bs[0];
   if (!b) { $("#pair-cards").innerHTML = ""; $("#brief-summary").textContent = "—"; renderAccuracy(); return; }
   $("#brief-date").textContent = "Briefing del " + new Date(b.date + "T12:00:00").toLocaleDateString("es-ES", {weekday: "long", day: "numeric", month: "long"}) + (b.generated_at ? " · " + b.generated_at : "");
-  $("#pair-cards").innerHTML = PAIRS.map(p => {
+  $("#pair-cards").innerHTML = VIS().map(p => {
     const d = b.pairs?.[p]; if (!d) return "";
     const up = Math.round(100 * d.prob_up), down = 100 - up;
     const out = d.outcome ? `<span class="pill ${d.outcome.hit ? "up" : "down"}">${d.outcome.hit ? "Acertado" : "Fallado"}: cerró ${esc(d.outcome.change)}</span>` : "";
@@ -1403,12 +1414,12 @@ function renderBriefing() {
       </div></details>
     </div>`;
   }).join("");
-  $("#brief-summary").textContent = b.summary || "";
+  $("#brief-summary").textContent = state.mercado === "fut" ? (b.summary_futuros || b.summary || "") : state.mercado === "todo" && b.summary_futuros ? `${b.summary || ""}\n\nFuturos: ${b.summary_futuros}` : (b.summary || "");
   const V = b.volumen;
   $("#vol-panel").hidden = !V;
   if (V) {
     const sig = x => x === "confirma" ? "up" : x === "diverge" ? "down" : "";
-    $("#vol-cards").innerHTML = PAIRS.map(k => [k, INS(k).fut]).map(([k, l]) => { const d = V[k]; if (!d) return "";
+    $("#vol-cards").innerHTML = VIS().map(k => [k, INS(k).fut]).map(([k, l]) => { const d = V[k]; if (!d) return "";
       return `<div class="panel" style="background:var(--bg)"><div class="panel-head"><b>${l}</b>${d.senal ? `<span class="pill ${sig(d.senal)}">${d.senal === "confirma" ? "Confirma el movimiento" : d.senal === "diverge" ? "No confirma" : "Neutral"}</span>` : ""}</div>
         <dl class="levels">${d.volumen ? `<dt>Volumen</dt><dd>${esc(d.volumen)}</dd>` : ""}${d.interes_abierto ? `<dt>Interés abierto</dt><dd>${esc(d.interes_abierto)}</dd>` : ""}</dl>
         <p class="small" style="margin:0">${esc(d.lectura || "")}</p></div>`; }).join("")
@@ -1419,15 +1430,16 @@ function renderBriefing() {
       <p class="small" style="margin:0">${esc(C.lectura || "")}</p>` : "";
   }
   const ups = b.updates || [];
-  const upPairs = PAIRS.filter(p => ups.some(u => u[p] != null));
+  const upPairs = VIS().filter(p => ups.some(u => u[p] != null));
   table($("#brief-updates"), [{h: "Hora", f: u => u.hora}, ...upPairs.map(p => ({h: INS(p).label + " ↑", n: 1, f: u => u[p] == null ? "—" : Math.round(100 * u[p]) + "%"})), {h: "Qué cambió", f: u => u.motivo || ""}], ups);
   const hist = bs.slice(0, 30);
   table($("#brief-history"), [{h: "Día", f: x => x.date},
-    ...PAIRS.filter(p => hist.some(x => x.pairs?.[p])).map(p => ({h: INS(p).label, html: 1, f: x => { const d = x.pairs?.[p]; if (!d) return `<span class="muted small">—</span>`; const pr = `<span class="num">${Math.round(100 * d.prob_up)}%↑</span>`, o = d.outcome;
+    ...VIS().filter(p => hist.some(x => x.pairs?.[p])).map(p => ({h: INS(p).label, html: 1, f: x => { const d = x.pairs?.[p]; if (!d) return `<span class="muted small">—</span>`; const pr = `<span class="num">${Math.round(100 * d.prob_up)}%↑</span>`, o = d.outcome;
         return pr + " " + (!o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`); }}))], hist);
   $("#news-upd").textContent = b.news_updated ? `Actualizadas ${b.news_updated} · hora de Madrid` : "Hora de Madrid";
-  const newsSorted = [...(b.news || []).filter(n => n.tipo === "ultima_hora"), ...(b.news || []).filter(n => n.tipo !== "ultima_hora")];
-  cdEvents = b.date === todayISO() ? (b.news || []).filter(n => n.tipo !== "ultima_hora").map(n => ({n, at: newsAt(n, b.date), done: isPublished(n), key: b.date + "|" + n.title + "|" + n.time})).filter(e => e.at != null) : [];
+  const newsVis = (b.news || []).filter(newsVisible);
+  const newsSorted = [...newsVis.filter(n => n.tipo === "ultima_hora"), ...newsVis.filter(n => n.tipo !== "ultima_hora")];
+  cdEvents = b.date === todayISO() ? newsVis.filter(n => n.tipo !== "ultima_hora").map(n => ({n, at: newsAt(n, b.date), done: isPublished(n), key: b.date + "|" + n.title + "|" + n.time})).filter(e => e.at != null) : [];
   $("#brief-news").innerHTML = newsSorted.map(n => `<article>
       <div class="when">${esc(n.time || "")}<br>${esc(n.currency || "")}</div>
       <div><div class="row" style="gap:8px"><b>${esc(n.title)}</b>${n.tipo === "ultima_hora" ? `<span class="pill down">Última hora</span>` : ""}${n.status && n.tipo !== "ultima_hora" ? `<span class="pill ${n.status === "Publicado" ? "" : n.status === "No confirmado" ? "down" : "warn"}">${esc(n.status)}</span>` : ""}</div>
@@ -1526,14 +1538,14 @@ function accRecords() {
   return out.sort((a, b) => b.date.localeCompare(a.date) || a.pair.localeCompare(b.pair));
 }
 function renderAccuracy() {
-  const R = accRecords();
+  const R = accRecords().filter(r => inMercado(r.pair));
   const rate = (arr, k) => { const v = arr.filter(r => typeof r[k] === "boolean"); return {n: v.length, h: v.filter(r => r[k]).length}; };
   const fmt = x => x.n ? `${x.h}/${x.n} <span class="small muted">(${Math.round(100 * x.h / x.n)}%)</span>` : "—";
   const days = [...new Set(R.map(r => r.date))];
   let streak = 0; for (const d of days) { const rs = R.filter(r => r.date === d && typeof r.hitFin === "boolean"); if (!rs.length) continue; if (rs.every(r => r.hitFin)) streak++; else break; }
   const tot = rate(R, "hitFin");
   $("#acc-kpis").innerHTML = [["Aciertos (% final)", fmt(tot)], ["Aciertos (% de primera hora)", fmt(rate(R, "hitFirst"))],
-    ...PAIRS.filter(p => R.some(r => r.pair === p)).map(p => [INS(p).label, fmt(rate(R.filter(r => r.pair === p), "hitFin"))]),
+    ...VIS().filter(p => R.some(r => r.pair === p)).map(p => [INS(p).label, fmt(rate(R.filter(r => r.pair === p), "hitFin"))]),
     ["Días registrados", days.length], ["Racha actual", streak ? `${streak} ${streak === 1 ? "día" : "días"} acertando` : "—"]]
     .map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
   const buckets = [[0.53, 0.6, "53-60%"], [0.6, 0.7, "60-70%"], [0.7, 0.81, "70-80%"]].map(([a, b, l]) => {
@@ -2060,7 +2072,7 @@ state.allTrades = [];
 state.cuentaView = (() => { try { return localStorage.getItem("cuentaView") || "todas"; } catch { return "todas"; } })();
 function applyCuentaView() {
   const v = state.cuentaView;
-  state.trades = v === "todas" ? [...state.allTrades] : state.allTrades.filter(t => t.cuenta === v);
+  state.trades = state.allTrades.filter(t => (v === "todas" || t.cuenta === v) && inMercado(t.pair));
   document.querySelectorAll("#cuenta-seg [data-cuenta]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.cuenta === v)));
 }
 document.querySelectorAll("#cuenta-seg [data-cuenta]").forEach(b => b.addEventListener("click", () => {
@@ -2069,7 +2081,22 @@ document.querySelectorAll("#cuenta-seg [data-cuenta]").forEach(b => b.addEventLi
 }));
 applyCuentaView();
 const cuentaPill = t => t.cuenta === "Backtest" ? `<span class="pill bt" title="Operación de backtesting (modo Replay)">Backtest</span>` : `<span class="pill up" title="Operación real">Real</span>`;
-const realTrades = () => (state.allTrades || []).filter(t => t.cuenta === "Real");
+const realTrades = () => (state.allTrades || []).filter(t => t.cuenta === "Real" && inMercado(t.pair));
+state.mercado = (() => { try { return localStorage.getItem("mercado") || "fx"; } catch { return "fx"; } })();
+function applyMercado() {
+  document.querySelectorAll("#mercado-seg [data-mercado]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mercado === state.mercado)));
+  const vis = VIS(), opts = ids => ids.map(id => `<option value="${id}">${INS(id).label}</option>`).join("");
+  const mp = $("#mtf-pair"), cur = mp.value; mp.innerHTML = opts(vis); mp.value = vis.includes(cur) ? cur : vis[0];
+  const jp = $("#j-pair"), jc = jp.value; jp.innerHTML = `<option value="">Todos</option>` + opts(vis); jp.value = vis.includes(jc) ? jc : "";
+  const tp = $("#t-pair"), tc = tp.value; tp.innerHTML = opts([...vis, ...PAIRS.filter(p => !vis.includes(p))]); tp.value = state.editing ? tc : vis[0];
+  document.body.dataset.mercado = state.mercado;
+  applyCuentaView();
+}
+document.querySelectorAll("#mercado-seg [data-mercado]").forEach(b => b.addEventListener("click", () => {
+  state.mercado = b.dataset.mercado; try { localStorage.setItem("mercado", state.mercado); } catch {}
+  applyMercado(); renderAll();
+}));
+applyMercado();
 
 // =====================================================================
 // Análisis a fondo, paso a paso, de cada operación
