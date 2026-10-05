@@ -1,4 +1,4 @@
-<title>Bitácora EURUSD·DXY</title>
+<title>Bitácora de trading</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -155,7 +155,7 @@ details summary{cursor:pointer;font-weight:600}
 <header class="top">
   <div class="wrap">
     <div class="brand">
-      <h1>Bitácora <span>EURUSD·DXY</span></h1>
+      <h1>Bitácora <span>de trading</span></h1>
       <span class="muted small" id="who">Cargando tu journal…</span>
     </div>
     <div class="seg" id="cuenta-seg" role="group" aria-label="Qué operaciones ver"><span class="small muted">Ver:</span><button type="button" data-cuenta="todas">Todas</button><button type="button" data-cuenta="Real">Real</button><button type="button" data-cuenta="Backtest">Backtest</button></div>
@@ -186,7 +186,7 @@ details summary{cursor:pointer;font-weight:600}
       <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
     </div>
     <div id="brief-empty" class="banner info" hidden>Todavía no hay briefing guardado. Se genera cada día laborable por la mañana; mientras tanto puedes pegar noticias abajo y pedir el sesgo a la IA.</div>
-    <div class="grid g2" id="pair-cards"></div>
+    <div class="grid" id="pair-cards" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr))"></div>
     <div class="grid g2">
       <div class="panel">
         <div class="panel-head"><h3>Evolución del % durante el día</h3><span class="muted small">Probabilidad de subida</span></div>
@@ -211,7 +211,7 @@ details summary{cursor:pointer;font-weight:600}
     <div class="panel" id="mtf-panel">
       <div class="panel-head">
         <div><h3>Estructura multitemporal y CRT pendientes</h3><div class="small muted">Velas de 4H a 3 meses, ancladas a las 17:00 de Nueva York (inicio del día forex)</div></div>
-        <select id="mtf-pair" style="width:auto" aria-label="Par"><option>EURUSD</option><option>DXY</option></select>
+        <select id="mtf-pair" style="width:auto" aria-label="Par"></select>
       </div>
       <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
       <div id="mtf-body" hidden style="display:flex;flex-direction:column;gap:10px">
@@ -229,7 +229,7 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div class="panel" id="vol-panel">
       <div class="panel-head"><h3>Volumen y posicionamiento</h3><span class="muted small">Futuros CME/ICE y COT de la CFTC</span></div>
-      <p class="muted small" style="margin:0">En forex al contado no hay volumen centralizado (lo que ve tu bróker es volumen de ticks). El volumen real sale de los futuros: Euro FX (6E) en la CME y el DXY en ICE.</p>
+      <p class="muted small" style="margin:0">En forex al contado no hay volumen centralizado (lo que ve tu bróker es volumen de ticks) y los CFD de índices tampoco tienen volumen real. El volumen real sale de los futuros: euro (6E), libra (6B) y E-mini Nasdaq (NQ) y S&P 500 (ES) en la CME, y el dólar (DX) en ICE.</p>
       <div class="grid g3" id="vol-cards"></div>
       <div id="vol-cot"></div>
     </div>
@@ -253,9 +253,9 @@ details summary{cursor:pointer;font-weight:600}
     <div class="grid g2">
       <div class="panel">
         <h3>Evalúa una noticia</h3>
-        <p class="muted small" style="margin:0">Cuando salga un dato, escríbelo y te digo hacia dónde es lógico que vayan EURUSD y DXY.</p>
+        <p class="muted small" style="margin:0">Cuando salga un dato, escríbelo y te digo hacia dónde es lógico que vayan EURUSD, GBPUSD, DXY, Nasdaq y S&P 500.</p>
         <div class="grid g3">
-          <label class="field">Divisa<select id="ev-cur"><option>USD</option><option>EUR</option></select></label>
+          <label class="field">Divisa<select id="ev-cur"><option>USD</option><option>EUR</option><option>GBP</option></select></label>
           <label class="field">Evento<select id="ev-type"></select></label>
           <label class="field">Previsión<input id="ev-fc" placeholder="54.8"></label>
           <label class="field">Real<input id="ev-act" placeholder="56.1"></label>
@@ -279,7 +279,7 @@ details summary{cursor:pointer;font-weight:600}
       <h2>Journal y win rate</h2>
       <div class="row">
         <label class="field" style="flex-direction:row;align-items:center;gap:6px">Par
-          <select id="j-pair" style="width:auto"><option value="">Todos</option><option>EURUSD</option><option>DXY</option></select></label>
+          <select id="j-pair" style="width:auto"></select></label>
       </div>
     </div>
     <div id="j-example" class="banner info" hidden></div>
@@ -405,7 +405,7 @@ details summary{cursor:pointer;font-weight:600}
         <label>Cuenta<select id="t-cuenta"><option value="Real">Trading real</option><option value="Backtest">Backtesting</option></select></label>
         <label>Fecha<input type="date" id="t-date" required></label>
         <label>Hora de entrada<input type="time" id="t-time"></label>
-        <label>Par<select id="t-pair"><option>EURUSD</option><option>DXY</option></select></label>
+        <label>Par<select id="t-pair"></select></label>
         <label>Dirección<select id="t-dir"><option>Long</option><option>Short</option></select></label>
         <label>Sesión<select id="t-session"></select></label>
         <label>Setup / modelo de entrada<input id="t-setup" placeholder="Barrido + FVG" list="setups"></label>
@@ -583,6 +583,25 @@ const POS_FACTORS = {
 const RED_FLAGS = ["contra_sesgo","sin_plan","emocion_negativa","noticia_cerca","rr_bajo","setup_debil","tras_perdida","sobreoperar","errores","falta_clave"];
 
 // Reglas de noticias: [etiqueta, dirección (+1 dato mayor = divisa fuerte), peso, explicación]
+const INSTR = [
+  {id: "EURUSD", label: "EURUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Euro FX (6E, CME)"},
+  {id: "GBPUSD", label: "GBPUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Libra (6B, CME)"},
+  {id: "DXY", label: "DXY", dec: 3, pip: 0.01, unit: "ptos", fut: "Futuros del dólar (DX, ICE)"},
+  {id: "NAS100", label: "Nasdaq 100", dec: 1, pip: 1, unit: "ptos", fut: "E-mini Nasdaq (NQ, CME)"},
+  {id: "SPX500", label: "S&P 500", dec: 1, pip: 1, unit: "ptos", fut: "E-mini S&P 500 (ES, CME)"},
+];
+const PAIRS = INSTR.map(i => i.id);
+const INS = id => INSTR.find(i => i.id === id) || INSTR[0];
+function canonPair(sym) {
+  const s = String(sym || "").toUpperCase().replace(/[^A-Z0-9&]/g, "");
+  if (!s) return null;
+  if (s.includes("EURUSD")) return "EURUSD";
+  if (s.includes("GBPUSD") || s.includes("CABLE")) return "GBPUSD";
+  if (/NAS|NDX|US100|USTEC|NQ|TECH100/.test(s)) return "NAS100";
+  if (/SPX|SP500|S&P|US500|USA500|SPY|^ES[A-Z]?\d*$|^MES/.test(s)) return "SPX500";
+  if (/^(DXY|USDX|DX|USDOLLAR|DOLLARINDEX)/.test(s) || s.includes("DXY") || s.includes("USDX")) return "DXY";
+  return null;
+}
 const EVENTS = [
   ["Nóminas no agrícolas (NFP)",1,1,"Empleo creado fuera del sector agrícola. Más empleo = economía fuerte = banco central más duro."],
   ["Tasa de desempleo",-1,.8,"Un paro más alto debilita la divisa (más probabilidad de bajadas de tipos)."],
@@ -604,6 +623,9 @@ const EVENTS = [
 // =====================================================================
 // Utilidades
 // =====================================================================
+{ const opts = INSTR.map(i => `<option value="${i.id}">${i.label}</option>`).join("");
+  document.getElementById("mtf-pair").innerHTML = opts; document.getElementById("t-pair").innerHTML = opts;
+  document.getElementById("j-pair").innerHTML = `<option value="">Todos</option>` + opts; }
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => { if (v === null || v === undefined || v === "") return null; const n = Number(String(v).replace(",", ".")); return Number.isFinite(n) ? n : null; };
@@ -630,7 +652,7 @@ function normalize(raw) {
   const t = {};
   t.date = raw.date ? String(raw.date).slice(0, 10) : todayISO();
   t.time = raw.time ? String(raw.time).slice(0, 5) : "";
-  t.pair = String(raw.pair || "EURUSD").toUpperCase().replace(/[^A-Z]/g, "");
+  t.pair = canonPair(raw.pair) || "EURUSD";
   const d = String(raw.direction || "").toLowerCase();
   t.direction = /^(l|c|b)/.test(d) ? "Long" : "Short";
   for (const k of ["entry", "stop_loss", "take_profit", "exit_price", "pnl"]) t[k] = num(raw[k]);
@@ -1266,12 +1288,7 @@ Responde SOLO con un JSON que diga el índice de columna (número, o null si no 
   } catch { return null; }
 }
 const numCell = v => { if (typeof v === "number") return v; const s = String(v ?? "").replace(/\s/g, "").replace(/[^\d,.\-]/g, ""); if (!s) return null; const t = /,\d{1,2}$/.test(s) && !/\.\d/.test(s) ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, ""); const n = Number(t); return Number.isFinite(n) ? n : null; };
-function pairOf(sym) {
-  const s = String(sym || "").toUpperCase().replace(/[^A-Z]/g, "");
-  if (s.includes("EURUSD")) return "EURUSD";
-  if (/^(DXY|USDX|DX|USDOLLAR|DOLLARINDEX)/.test(s) || s.includes("DXY") || s.includes("USDX")) return "DXY";
-  return null;
-}
+const pairOf = canonPair;
 async function importBroker(file) {
   const msg = $("#csv-msg");
   msg.textContent = "Leyendo el archivo…";
@@ -1317,7 +1334,7 @@ async function importBroker(file) {
       pnl: profit, r: rMult, session: sessionFromMadridHour(+ot.time.slice(0, 2)), daily_bias: biasFromBriefing(ot.date, pair), ext_id: ext,
       notes: `Importada de ${file.name}${map.volume != null && r[map.volume] ? ` · volumen ${r[map.volume]}` : ""}${rMult != null && !risk && !(sl > 0) ? " · R aproximado (sin stop en el informe)" : ""}`});
   }
-  if (!cands.length) { msg.innerHTML = `<span class="neg">No he encontrado operaciones nuevas de EURUSD o DXY en el archivo${have.size ? " (puede que ya estuvieran importadas)" : ""}.</span>`; return; }
+  if (!cands.length) { msg.innerHTML = `<span class="neg">No he encontrado operaciones nuevas de EURUSD, GBPUSD, DXY, Nasdaq 100 o S&P 500 en el archivo${have.size ? " (puede que ya estuvieran importadas)" : ""}.</span>`; return; }
   let n = 0;
   for (const c of cands) { await saveTrade(c); n++; if (n % 5 === 0) msg.textContent = `Importando… ${n}/${cands.length}`; }
   msg.innerHTML = `<span class="pos">${n} operaciones importadas.</span> Ya cuentan en tu win rate y en el análisis. Si quieres, añade después capturas o confluencias desde «Editar» (no es obligatorio).`;
@@ -1360,12 +1377,12 @@ function renderBriefing() {
   const b = bs.find(x => x.date === picker.value) || bs[0];
   if (!b) { $("#pair-cards").innerHTML = ""; $("#brief-summary").textContent = "—"; renderAccuracy(); return; }
   $("#brief-date").textContent = "Briefing del " + new Date(b.date + "T12:00:00").toLocaleDateString("es-ES", {weekday: "long", day: "numeric", month: "long"}) + (b.generated_at ? " · " + b.generated_at : "");
-  $("#pair-cards").innerHTML = ["EURUSD", "DXY"].map(p => {
+  $("#pair-cards").innerHTML = PAIRS.map(p => {
     const d = b.pairs?.[p]; if (!d) return "";
     const up = Math.round(100 * d.prob_up), down = 100 - up;
     const out = d.outcome ? `<span class="pill ${d.outcome.hit ? "up" : "down"}">${d.outcome.hit ? "Acertado" : "Fallado"}: cerró ${esc(d.outcome.change)}</span>` : "";
     return `<div class="panel pair-card">
-      <div class="panel-head"><h3>${p}</h3><span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span></div>
+      <div class="panel-head"><h3>${INS(p).label}</h3><span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span></div>
       <div class="price num">${esc(d.price ?? "")}</div>
       <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
       ${out}
@@ -1377,11 +1394,13 @@ function renderBriefing() {
           ${C.falta?.length ? `<div class="small muted"><b>Datos que faltan</b><ul>${li(C.falta)}</ul></div>` : ""}</details>`; })() : ""}
       ${d.scores ? `<div class="mix">${[["fundamental", "Fundamental · 60%"], ["tecnico", "Técnico · 30%"], ["sentimiento", "Sentimiento · 10%"]].map(([k, l]) => { const v = Math.max(-1, Math.min(1, Number(d.scores[k]) || 0));
         return `<div class="mix-row"><span>${l}</span><div class="dv" role="img" aria-label="${l}: ${v.toFixed(2)}"><i class="${v >= 0 ? "p" : "n"}" style="width:${Math.abs(v) * 50}%"></i></div><span class="num small ${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(2)}</span></div>`; }).join("")}</div>` : ""}
+      <dl class="levels">${Object.entries(d.levels || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      <details class="more"><summary class="small">Ver el análisis completo${d.drivers?.length ? ` (${d.drivers.length} factores)` : ""}</summary><div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
       ${d.fundamental ? `<p style="margin:0"><b>Fundamental:</b> ${esc(d.fundamental)}</p>` : ""}
       ${d.drivers?.length ? `<ul class="drivers">${d.drivers.map(x => `<li><span class="ar ${x.efecto === "+" ? "pos" : x.efecto === "-" ? "neg" : "muted"}">${x.efecto === "+" ? "↑" : x.efecto === "-" ? "↓" : "·"}</span><span><b>${esc(x.factor)}</b>${x.tipo ? ` <span class="muted small">(${esc(x.tipo)})</span>` : ""}: ${esc(x.explicacion || "")}</span></li>`).join("")}</ul>` : ""}
       <p style="margin:0"><b>Técnico:</b> ${esc(d.technical || "")}</p>
-      <dl class="levels">${Object.entries(d.levels || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       ${d.invalidation ? `<p class="small muted" style="margin:0"><b>Invalida el escenario:</b> ${esc(d.invalidation)}</p>` : ""}
+      </div></details>
     </div>`;
   }).join("");
   $("#brief-summary").textContent = b.summary || "";
@@ -1389,7 +1408,7 @@ function renderBriefing() {
   $("#vol-panel").hidden = !V;
   if (V) {
     const sig = x => x === "confirma" ? "up" : x === "diverge" ? "down" : "";
-    $("#vol-cards").innerHTML = [["EURUSD", "Euro FX (6E)"], ["DXY", "Futuros DXY"]].map(([k, l]) => { const d = V[k]; if (!d) return "";
+    $("#vol-cards").innerHTML = PAIRS.map(k => [k, INS(k).fut]).map(([k, l]) => { const d = V[k]; if (!d) return "";
       return `<div class="panel" style="background:var(--bg)"><div class="panel-head"><b>${l}</b>${d.senal ? `<span class="pill ${sig(d.senal)}">${d.senal === "confirma" ? "Confirma el movimiento" : d.senal === "diverge" ? "No confirma" : "Neutral"}</span>` : ""}</div>
         <dl class="levels">${d.volumen ? `<dt>Volumen</dt><dd>${esc(d.volumen)}</dd>` : ""}${d.interes_abierto ? `<dt>Interés abierto</dt><dd>${esc(d.interes_abierto)}</dd>` : ""}</dl>
         <p class="small" style="margin:0">${esc(d.lectura || "")}</p></div>`; }).join("")
@@ -1400,12 +1419,12 @@ function renderBriefing() {
       <p class="small" style="margin:0">${esc(C.lectura || "")}</p>` : "";
   }
   const ups = b.updates || [];
-  table($("#brief-updates"), [{h: "Hora", f: u => u.hora}, {h: "EURUSD ↑", n: 1, f: u => u.EURUSD == null ? "—" : Math.round(100 * u.EURUSD) + "%"},
-    {h: "DXY ↑", n: 1, f: u => u.DXY == null ? "—" : Math.round(100 * u.DXY) + "%"}, {h: "Qué cambió", f: u => u.motivo || ""}], ups);
+  const upPairs = PAIRS.filter(p => ups.some(u => u[p] != null));
+  table($("#brief-updates"), [{h: "Hora", f: u => u.hora}, ...upPairs.map(p => ({h: INS(p).label + " ↑", n: 1, f: u => u[p] == null ? "—" : Math.round(100 * u[p]) + "%"})), {h: "Qué cambió", f: u => u.motivo || ""}], ups);
   const hist = bs.slice(0, 30);
   table($("#brief-history"), [{h: "Día", f: x => x.date},
-    ...["EURUSD", "DXY"].flatMap(p => [{h: p + " ↑", n: 1, f: x => x.pairs?.[p] ? Math.round(100 * x.pairs[p].prob_up) + "%" : "—"},
-      {h: "Resultado", html: 1, f: x => { const o = x.pairs?.[p]?.outcome; return !o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`; }}])], hist);
+    ...PAIRS.filter(p => hist.some(x => x.pairs?.[p])).map(p => ({h: INS(p).label, html: 1, f: x => { const d = x.pairs?.[p]; if (!d) return `<span class="muted small">—</span>`; const pr = `<span class="num">${Math.round(100 * d.prob_up)}%↑</span>`, o = d.outcome;
+        return pr + " " + (!o ? `<span class="muted small">pendiente</span>` : typeof o.hit !== "boolean" ? `<span class="small">${esc(o.change || "")}</span>` : `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>`); }}))], hist);
   $("#news-upd").textContent = b.news_updated ? `Actualizadas ${b.news_updated} · hora de Madrid` : "Hora de Madrid";
   const newsSorted = [...(b.news || []).filter(n => n.tipo === "ultima_hora"), ...(b.news || []).filter(n => n.tipo !== "ultima_hora")];
   cdEvents = b.date === todayISO() ? (b.news || []).filter(n => n.tipo !== "ultima_hora").map(n => ({n, at: newsAt(n, b.date), done: isPublished(n), key: b.date + "|" + n.title + "|" + n.time})).filter(e => e.at != null) : [];
@@ -1497,7 +1516,7 @@ setInterval(tickCountdowns, 1000);
 function pctChange(o) { const m = String(o?.change ?? "").replace(",", ".").replace("−", "-").match(/[-+]?\d+(\.\d+)?/); return m ? +m[0] : null; }
 function accRecords() {
   const out = [];
-  for (const b of state.briefings) for (const p of ["EURUSD", "DXY"]) {
+  for (const b of state.briefings) for (const p of PAIRS) {
     const d = b.pairs?.[p], o = d?.outcome; if (!o) continue;
     const ch = pctChange(o), fin = Number(d.prob_up), first = Number(b.updates?.[0]?.[p] ?? d.prob_up);
     const up = ch != null && ch !== 0 ? ch > 0 : null;
@@ -1514,7 +1533,7 @@ function renderAccuracy() {
   let streak = 0; for (const d of days) { const rs = R.filter(r => r.date === d && typeof r.hitFin === "boolean"); if (!rs.length) continue; if (rs.every(r => r.hitFin)) streak++; else break; }
   const tot = rate(R, "hitFin");
   $("#acc-kpis").innerHTML = [["Aciertos (% final)", fmt(tot)], ["Aciertos (% de primera hora)", fmt(rate(R, "hitFirst"))],
-    ["EURUSD", fmt(rate(R.filter(r => r.pair === "EURUSD"), "hitFin"))], ["DXY", fmt(rate(R.filter(r => r.pair === "DXY"), "hitFin"))],
+    ...PAIRS.filter(p => R.some(r => r.pair === p)).map(p => [INS(p).label, fmt(rate(R.filter(r => r.pair === p), "hitFin"))]),
     ["Días registrados", days.length], ["Racha actual", streak ? `${streak} ${streak === 1 ? "día" : "días"} acertando` : "—"]]
     .map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
   const buckets = [[0.53, 0.6, "53-60%"], [0.6, 0.7, "60-70%"], [0.7, 0.81, "70-80%"]].map(([a, b, l]) => {
@@ -1638,7 +1657,7 @@ function crtOf(bars, dec, pip) {
 }
 function mtfAnalysis(pair) {
   const m = state.market[pair]; if (!m?.h1?.length && !m?.d1?.length) return null;
-  const dec = pair === "EURUSD" ? 5 : 3, pip = pair === "EURUSD" ? 0.0001 : 0.01;
+  const dec = INS(pair).dec, pip = INS(pair).pip;
   const h1 = m.h1 || [], d1 = dailySeries(h1, m.d1 || []);
   return MTF.map(([name, tf]) => {
     const s = seriesFor(tf, h1, d1);
@@ -1656,7 +1675,7 @@ function renderMTF() {
   $("#mtf-body").hidden = !a;
   if (!a) return;
   const last = m.h1?.length ? m.h1[m.h1.length - 1] : m.d1?.[m.d1.length - 1];
-  $("#mtf-meta").textContent = `Última vela: ${new Date(last.t * 1000).toLocaleString("es-ES", {timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short"})} (Madrid) · precio ${last.c.toFixed(pair === "EURUSD" ? 5 : 3)} · fuente: ${m.source || "—"}`;
+  $("#mtf-meta").textContent = `Última vela: ${new Date(last.t * 1000).toLocaleString("es-ES", {timeZone: "Europe/Madrid", dateStyle: "short", timeStyle: "short"})} (Madrid) · precio ${last.c.toFixed(INS(pair).dec)} · fuente: ${m.source || "—"}`;
   const bull = a.filter(r => r.st.label === "Alcista").length, bear = a.filter(r => r.st.label === "Bajista").length;
   $("#mtf-strip").innerHTML = a.map(r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.name)} ${r.st.label === "Alcista" ? "↑" : r.st.label === "Bajista" ? "↓" : "↔"}</span>`).join(" ");
   $("#mtf-sum").innerHTML = `<b>${bear}</b> temporalidades bajistas, <b>${bull}</b> alcistas y <b>${a.length - bull - bear}</b> en rango o sin datos. ` +
@@ -1667,7 +1686,7 @@ function renderMTF() {
     {h: "Lectura", f: r => r.st.detail},
     {h: "CRT pendiente", html: 1, f: r => r.crt ? `<span class="pill ${r.crt.cls}">${esc(r.crt.dir)}${r.crt.forming ? " · en formación" : ""}</span> <span class="small">${esc(r.crt.text)}${r.crt.age > 1 ? ` (hace ${r.crt.age} velas)` : ""}</span>` : `<span class="muted small">Ninguno</span>`},
     {h: "Objetivo", n: 1, f: r => r.crt ? r.crt.target : "—"},
-    {h: pair === "EURUSD" ? "Distancia (pips)" : "Distancia (ptos)", n: 1, f: r => r.crt ? r.crt.dist : "—"},
+    {h: `Distancia (${INS(pair).unit})`, n: 1, f: r => r.crt ? r.crt.dist : "—"},
     {h: "Se invalida en", n: 1, f: r => r.crt ? r.crt.inval : "—"},
   ], a);
 }
@@ -1691,7 +1710,7 @@ $("#mtf-file").addEventListener("change", async e => {
   for (const file of files) {
     try {
       const {bars, step} = parseOHLC(await file.text());
-      const dec = pair === "EURUSD" ? 5 : 3;
+      const dec = INS(pair).dec;
       let kind;
       if (step <= 3600) { // 1H o inferior: se agrupa a 1H y se guardan los últimos ~150 días
         const h = aggregate(bars, b => Math.floor(b.t / 3600)).slice(-3600);
@@ -1718,10 +1737,10 @@ function parseNum(s) { const m = String(s ?? "").trim().replace(",", ".").match(
 function evaluateEvent() {
   const [label, dir, w, expl] = EVENTS[+$("#ev-type").value], cur = $("#ev-cur").value;
   const fc = parseNum($("#ev-fc").value), act = parseNum($("#ev-act").value);
-  const name = cur === "USD" ? "dólar" : "euro";
+  const name = cur === "USD" ? "dólar" : cur === "GBP" ? "libra" : "euro";
   if (fc == null) return `${expl}\nEscribe al menos la previsión para ver los escenarios.`;
-  const strongPair = cur === "USD" ? "EURUSD baje y el DXY suba" : "EURUSD suba y el DXY baje";
-  const weakPair = cur === "USD" ? "EURUSD suba y el DXY baje" : "EURUSD baje y el DXY suba";
+  const strongPair = cur === "USD" ? "EURUSD y GBPUSD bajen y el DXY suba (en Nasdaq y S&P 500: si el dato es de inflación o hace subir los tipos, presión bajista; si es de crecimiento sin más inflación, apoyo)" : cur === "GBP" ? "GBPUSD suba" : "EURUSD suba y el DXY baje";
+  const weakPair = cur === "USD" ? "EURUSD y GBPUSD suban y el DXY baje (en Nasdaq y S&P 500: si baja la expectativa de tipos, apoyo; si asusta por recesión, presión bajista)" : cur === "GBP" ? "GBPUSD baje" : "EURUSD baje y el DXY suba";
   if (act == null) return `${expl}\n\nEscenarios:\n• Si sale ${dir > 0 ? "por encima" : "por debajo"} de ${$("#ev-fc").value}: ${name} fuerte, así que lo lógico es que ${strongPair}.\n• Si sale ${dir > 0 ? "por debajo" : "por encima"}: ${name} débil, así que lo lógico es que ${weakPair}.`;
   const surprise = Math.max(-1, Math.min(1, (act - fc) / Math.max(Math.abs(fc), 1e-9) * 10)) * dir;
   if (Math.abs(surprise * w) < .05) return `${expl}\n\nDato en línea con lo esperado (${$("#ev-act").value} frente a ${$("#ev-fc").value}): impacto limitado. Manda el sesgo técnico.`;
@@ -1732,7 +1751,7 @@ $("#ev-go").addEventListener("click", () => { $("#ev-out").textContent = evaluat
 $("#ev-ai").addEventListener("click", () => {
   const ev = EVENTS[+$("#ev-type").value][0];
   const latest = state.briefings[0];
-  askAI($("#ev-out"), `Eres analista de forex. Explica en español, en un párrafo corto, esta noticia de alto impacto y por qué lo lógico es que EURUSD y el índice del dólar DXY suban o bajen por ese motivo. Si falta el dato real, da los dos escenarios.
+  askAI($("#ev-out"), `Eres analista de forex. Explica en español, en un párrafo corto, esta noticia de alto impacto y por qué lo lógico es que EURUSD, GBPUSD, el índice del dólar DXY, el Nasdaq 100 y el S&P 500 suban o bajen por ese motivo. Si falta el dato real, da los dos escenarios.
 Noticia: ${ev} (${$("#ev-cur").value}). Previsión: ${$("#ev-fc").value || "?"}. Dato real: ${$("#ev-act").value || "aún no publicado"}.
 Contexto del briefing más reciente (${latest?.date || "no disponible"}): ${latest?.summary || "—"}`, {modelTier: "quick"});
 });
@@ -1742,16 +1761,16 @@ $("#paste-go").addEventListener("click", () => {
   const txt = $("#paste-news").value.trim(); if (!txt) { $("#paste-out").textContent = "Pega primero alguna noticia o dato."; return; }
   const b = state.briefings[0];
   pasteCtl = new AbortController(); $("#paste-stop").hidden = false;
-  askAI($("#paste-out"), `Eres analista macro y técnico de forex. Responde en español.
+  askAI($("#paste-out"), `Eres analista macro y técnico de forex e índices. Responde en español.
 Fecha de hoy: ${todayISO()}.
-Briefing más reciente (${b?.date || "ninguno"}): ${b ? JSON.stringify({resumen: b.summary, EURUSD: b.pairs?.EURUSD, DXY: b.pairs?.DXY}) : "no disponible"}.
-Estructura multitemporal calculada con velas reales: ${mtfText("EURUSD") || "no disponible"} | ${mtfText("DXY") || "no disponible"}
+Briefing más reciente (${b?.date || "ninguno"}): ${b ? JSON.stringify({resumen: b.summary, ...Object.fromEntries(PAIRS.map(p => [p, b.pairs?.[p] ? {prob_up: b.pairs[p].prob_up, bias: b.pairs[p].bias, fundamental: b.pairs[p].fundamental} : null]))}) : "no disponible"}.
+Estructura multitemporal calculada con velas reales: ${PAIRS.map(p => `${mtfText(p) || p + ": sin velas"}`).join(" | ")}
 Noticias y datos que ha leído el trader hoy:
 ${txt.slice(0, 8000)}
 
-Para cada noticia relevante: resumen de 1-2 frases y "por este motivo lo lógico es que EURUSD suba/baje y el DXY suba/baje".
-Pondera así: 60% fundamental (expectativas de tipos Fed vs BCE, diferencial de bonos a 2 años, sorpresas en los datos, discursos de bancos centrales, geopolítica), 30% técnico y 10% sentimiento de mercado.
-Después da el sesgo final con un porcentaje aproximado de que EURUSD cierre hoy al alza o a la baja, y lo mismo para el DXY (recuerda: correlación inversa, el euro pesa ~57,6% en el DXY). Sé prudente: rara vez por encima del 70%. Termina con qué invalidaría el escenario. Sin tablas.`, {signal: pasteCtl.signal}).finally(() => $("#paste-stop").hidden = true);
+Para cada noticia relevante: resumen de 1-2 frases y "por este motivo lo lógico es que EURUSD, GBPUSD, DXY, Nasdaq 100 y S&P 500 suban/bajen" (di la dirección de cada uno).
+Pondera así: 60% fundamental (expectativas de tipos Fed vs BCE y Banco de Inglaterra; en índices, rendimientos de EE. UU., resultados empresariales y apetito por el riesgo; diferencial de bonos a 2 años, sorpresas en los datos, discursos de bancos centrales, geopolítica), 30% técnico y 10% sentimiento de mercado.
+Después da el sesgo final con un porcentaje aproximado de que cierre hoy al alza o a la baja para EURUSD, GBPUSD, DXY, Nasdaq 100 y S&P 500 (recuerda: EURUSD y GBPUSD van en sentido contrario al DXY; Nasdaq y S&P 500 suelen ir juntos). Sé prudente: rara vez por encima del 70%. Termina con qué invalidaría el escenario. Sin tablas.`, {signal: pasteCtl.signal}).finally(() => $("#paste-stop").hidden = true);
 });
 $("#paste-stop").addEventListener("click", () => pasteCtl?.abort());
 
@@ -1829,17 +1848,17 @@ function analysisPrompt(extra) {
   const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
   return `${COACH}
 ${stratTxt()}
-Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD o DXY (pueden ser antes de entrar, durante y el resultado).
+Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500) (pueden ser antes de entrar, durante y el resultado).
 ${extra || ""}
 REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
 Analízala como un trader profesional: contexto y tendencia, volumen si hay un indicador visible (picos en el barrido o en la ruptura, volumen decreciente en el retroceso), estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG e iFVG (un iFVG es un FVG invertido: el precio cierra a través de él y pasa a funcionar como zona contraria; si el trader lo etiqueta «ifvg» o se ve así, usa la confluencia «iFVG», no «FVG»), order blocks, soportes y resistencias, sesión, dónde está la entrada, el stop y el objetivo si se ven dibujados, y cómo terminó si se ve.
 Confluencias conocidas del trader (usa estos nombres exactos cuando apliquen; puedes añadir otras nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
-Estructura actual del mercado por temporalidades (calculada con velas reales): ${mtfText("EURUSD") || "no disponible"}
+Estructura actual del mercado por temporalidades (calculada con velas reales): ${PAIRS.map(p => `${mtfText(p) || p + ": sin velas"}`).join(" | ")}
 
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
-{"date":"AAAA-MM-DD si se ve en el eje del gráfico, o null","time":"HH:MM de la vela de entrada si se ve, o null","pair":"EURUSD|DXY|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
+{"date":"AAAA-MM-DD si se ve en el eje del gráfico, o null","time":"HH:MM de la vela de entrada si se ve, o null","pair":"EURUSD|GBPUSD|DXY|NAS100|SPX500|null","direction":"Long|Short|null","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"una de las sesiones válidas o null",
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null",
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null (solo si se ve un indicador de volumen en la imagen)",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
@@ -1851,7 +1870,7 @@ function applyAnalysis(a) {
   const setSel = (id, v, ok) => { if (v && ok.includes(v)) $(id).value = v; };
   if (a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) && $("#t-date").value === todayISO()) $("#t-date").value = a.date;
   if (a.time && /^\d{1,2}:\d{2}$/.test(a.time) && !$("#t-time").value) $("#t-time").value = a.time.padStart(5, "0");
-  setSel("#t-pair", a.pair, ["EURUSD", "DXY"]); setSel("#t-dir", a.direction, ["Long", "Short"]);
+  setSel("#t-pair", canonPair(a.pair), PAIRS); setSel("#t-dir", a.direction, ["Long", "Short"]);
   setSel("#t-tf", a.timeframe, ["M1", "M5", "M15", "M30", "H1", "H4"]); if (!$("#t-vol").value) setSel("#t-vol", a.volume, ["Alto", "Normal", "Bajo"]); setSel("#t-session", a.session, SESSIONS);
   for (const k of [["#t-entry", "entry"], ["#t-sl", "stop_loss"], ["#t-tp", "take_profit"], ["#t-exit", "exit_price"]]) setIf(k[0], num(a[k[1]]));
   setIf("#t-setup", a.setup);
@@ -1895,17 +1914,17 @@ function autoPrompt(n) {
   const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
   return `${COACH}
 ${stratTxt()}
-Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos de EURUSD o DXY del trader (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
+Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos del trader (EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500)) (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
 Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG e iFVG (un iFVG es un FVG invertido: el precio cierra a través de él y pasa a funcionar como zona contraria; si el trader lo etiqueta «ifvg» o se ve así, usa la confluencia «iFVG», no «FVG»), order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
 REGLA DEL TRADER PARA LEER EL RESULTADO (obligatoria): usa la herramienta de posición de TradingView. La zona NARANJA (o roja/rosa) es el STOP LOSS y la zona AZUL (o verde) es el TAKE PROFIT; la línea donde se tocan las dos zonas es la ENTRADA. La dirección sale de la posición de las zonas: azul ENCIMA de la entrada = Long; azul DEBAJO = Short (no te fíes de otras pistas). Después de la entrada, mira qué borde exterior toca primero el precio (incluidas las mechas): si el precio llega o atraviesa el borde exterior de la zona naranja = "Loss" (exit_price = stop_loss, r = -1); si llega o atraviesa el borde exterior de la zona azul = "Win" (exit_price = take_profit, r = distancia de la zona azul / distancia de la zona naranja). Si aún no ha tocado ninguno de los dos bordes, la operación sigue abierta: result y r en null. Lee los precios del eje derecho y de las etiquetas de color (azul = TP, naranja = SL).
 Confluencias conocidas (usa estos nombres exactos cuando apliquen; puedes añadir nuevas): ${known.join(" | ")}
 Setups que ya usa: ${setups.join(" | ") || "ninguno todavía"}
 Sesiones válidas: ${SESSIONS.join(" | ")}
-Estructura actual del mercado: ${mtfText("EURUSD") || "no disponible"}
+Estructura actual del mercado: ${PAIRS.map(p => `${mtfText(p) || p + ": sin velas"}`).join(" | ")}
 
 ${CUENTA_RULE()}
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
-{"operaciones":[{"imagenes":[1,2],"cuenta":"Real|Backtest","fecha_estimada":true|false,"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|DXY","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
+{"operaciones":[{"imagenes":[1,2],"cuenta":"Real|Backtest","fecha_estimada":true|false,"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|GBPUSD|DXY|NAS100|SPX500","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
 "entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
@@ -1941,7 +1960,7 @@ async function autoFromImages(list) {
         if (state.assets) for (const n of idx) { try { shots.push((await state.assets.upload(chunk[n])).id); } catch {} }
         const date = /^\d{4}-\d{2}-\d{2}$/.test(op.date || "") ? op.date : todayISO();
         const time = /^\d{1,2}:\d{2}$/.test(op.time || "") ? op.time.padStart(5, "0") : "";
-        const pair = ["EURUSD", "DXY"].includes(op.pair) ? op.pair : "EURUSD";
+        const pair = canonPair(op.pair) || "EURUSD";
         const confs = (Array.isArray(op.confluences) ? op.confluences : []).map(String);
         fixOutcome(op);
         const cuenta = state.autoCuenta !== "auto" ? state.autoCuenta : op.cuenta === "Backtest" ? "Backtest" : "Real";
@@ -2068,7 +2087,7 @@ const DEEP_GUIDE = `ANÁLISIS A FONDO: como un mentor de Smart Money / ICT que c
 function deepPrompt(t) {
   return `${COACH}
 ${stratTxt()}
-Te paso la imagen o imágenes de UNA operación del trader en EURUSD o DXY.
+Te paso la imagen o imágenes de UNA operación del trader en EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500).
 ${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes})}` : ""}
 ${RULE_TEXT}
 ${DEEP_GUIDE}
@@ -2087,7 +2106,7 @@ function openDeep(t) {
     <p style="margin:0">${esc(D.resumen || "")}</p>
     ${t.shots?.length ? `<div class="thumbs">${t.shots.map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Gráfico de la operación" style="max-height:340px;max-width:100%;border-radius:4px;border:1px solid var(--line)"></a>`).join("")}</div>` : ""}
     ${D.etiquetas_leidas?.length ? `<div class="chips">${D.etiquetas_leidas.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : ""}
-    <dl class="levels">${[["Entrada", L.entrada], ["Stop", L.stop], ["Objetivo", L.objetivo], ["Riesgo", L.riesgo_pips != null ? L.riesgo_pips + " pips" : null], ["Beneficio", L.beneficio_pips != null ? L.beneficio_pips + " pips" : null], ["R:R", L.rr]].filter(x => x[1] != null).map(([k, x]) => `<dt>${k}</dt><dd>${esc(x)}</dd>`).join("")}</dl>
+    <dl class="levels">${[["Entrada", L.entrada], ["Stop", L.stop], ["Objetivo", L.objetivo], ["Riesgo", L.riesgo_pips != null ? L.riesgo_pips + " " + INS(t.pair).unit : null], ["Beneficio", L.beneficio_pips != null ? L.beneficio_pips + " " + INS(t.pair).unit : null], ["R:R", L.rr]].filter(x => x[1] != null).map(([k, x]) => `<dt>${k}</dt><dd>${esc(x)}</dd>`).join("")}</dl>
     <ol class="clean" style="gap:12px">${(D.pasos || []).map(p => `<li><div class="row" style="gap:8px"><b>${esc(p.paso)}</b><span class="pill ${(v[p.valoracion] || ["", ""])[1]}">${(v[p.valoracion] || [p.valoracion || ""])[0]}${p.nota != null ? " · " + esc(p.nota) + "/10" : ""}</span></div><div class="small">${esc(p.lectura || "")}</div></li>`).join("")}</ol>
     ${D.resultado?.explicacion ? `<p class="small" style="margin:0"><b>Resultado:</b> ${esc(D.resultado.explicacion)}</p>` : ""}
     ${D.que_haria_un_pro ? `<div class="banner info"><b>Qué habría hecho un profesional:</b> ${esc(D.que_haria_un_pro)}</div>` : ""}
@@ -2573,7 +2592,7 @@ function compactCSV(ts, max = 400) {
   const cols = ["date", "time", "pair", "direction", "session", "setup", "timeframe", "r", "result", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "confluences", "mistakes", "notes", "analisis_ia"];
   return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = c === "analisis_ia" ? (t.ai_analysis || "").slice(0, 500) : t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
 }
-const COACH = `Eres un coach de trading profesional especializado en EURUSD y DXY. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados. Cada operación tiene una columna «cuenta»: Real (trading real) o Backtest (backtesting en modo Reproducción). El backtesting sirve para validar el modelo de entrada, pero NO para hablar de frecuencia diaria, horarios reales, rachas, emociones ni sobreoperar; distingue siempre los resultados reales de los de backtesting.`;
+const COACH = `Eres un coach de trading profesional especializado en EURUSD, GBPUSD, DXY, Nasdaq 100 y S&P 500. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados. Cada operación tiene una columna «cuenta»: Real (trading real) o Backtest (backtesting en modo Reproducción). El backtesting sirve para validar el modelo de entrada, pero NO para hablar de frecuencia diaria, horarios reales, rachas, emociones ni sobreoperar; distingue siempre los resultados reales de los de backtesting.`;
 function renderCoach() {
   const sel = $("#c-trade"), cur = sel.value;
   sel.innerHTML = [...state.trades].reverse().map(t => `<option value="${esc(t.id)}">${esc(t.date)} · ${esc(t.pair)} ${esc(t.direction)} · ${fmtR(t.r)} ${esc(t.result || "")}</option>`).join("");
