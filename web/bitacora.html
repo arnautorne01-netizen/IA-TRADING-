@@ -200,6 +200,7 @@ details summary{cursor:pointer;font-weight:600}
       <div class="panel-head"><h3>Sesgo semanal</h3><span class="small muted" id="week-meta"></span></div>
       <div class="week-grid" id="week-cards"></div>
       <p class="small" id="week-sum" style="margin:0"></p>
+      <div id="week-extra"></div>
       <p class="small muted" style="margin:0">Convicción de −5 (fuertemente bajista) a +5 (fuertemente alcista) para toda la semana. Es otra pregunta distinta al sesgo del día: un par puede tener fondo alcista en la semana y bajar hoy.</p>
     </div>
     <div class="grid" id="pair-cards" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr))"></div>
@@ -1553,7 +1554,7 @@ setInterval(tickCountdowns, 1000);
 const convLabel = c => c >= 4 ? "Fuertemente alcista" : c >= 2 ? "Alcista" : c >= 1 ? "Ligeramente alcista" : c <= -4 ? "Fuertemente bajista" : c <= -2 ? "Bajista" : c <= -1 ? "Ligeramente bajista" : "Neutral";
 function renderWeekly(bs, b) {
   const src = bs.find(x => x.date <= b.date && x.semanal?.pares) || null, W = src?.semanal;
-  if (!W) { $("#week-meta").textContent = ""; $("#week-cards").innerHTML = `<p class="small muted" style="margin:0">Aún no hay sesgo semanal: se calcula cada lunes con el briefing de las 7:50 y se revisa a diario.</p>`; $("#week-sum").textContent = ""; return; }
+  if (!W) { $("#week-extra").innerHTML = ""; $("#week-meta").textContent = ""; $("#week-cards").innerHTML = `<p class="small muted" style="margin:0">Aún no hay sesgo semanal: se calcula cada lunes con el briefing de las 7:50 y se revisa a diario.</p>`; $("#week-sum").textContent = ""; return; }
   $("#week-meta").textContent = `${W.desde && W.hasta ? `del ${W.desde.slice(8)}/${W.desde.slice(5, 7)} al ${W.hasta.slice(8)}/${W.hasta.slice(5, 7)}` : W.semana || ""}${W.actualizado ? " · " + W.actualizado : ""}`;
   $("#week-cards").innerHTML = VIS().filter(p => W.pares[p]).map(p => {
     const d = W.pares[p], c = Math.max(-5, Math.min(5, Math.round(Number(d.conviccion) || 0))), col = c > 0 ? "var(--up)" : c < 0 ? "var(--down)" : "var(--muted)";
@@ -1565,6 +1566,13 @@ function renderWeekly(bs, b) {
       ${d.claves?.length || d.niveles ? `<details class="small"><summary class="muted">Claves y niveles</summary><ul class="clean">${(d.claves || []).map(k => `<li>${esc(k)}</li>`).join("")}${d.niveles ? Object.entries(d.niveles).map(([k, v]) => `<li><b>${esc(k)}:</b> ${esc(v)}</li>`).join("") : ""}</ul></details>` : ""}</div>`;
   }).join("");
   $("#week-sum").textContent = state.mercado === "fut" ? (W.resumen_futuros || W.resumen || "") : (W.resumen || "");
+  const C = W.confianza || {}, F = W.fuentes || [], li = a => (a || []).map(x => `<li>${esc(x)}</li>`).join("");
+  $("#week-extra").innerHTML = (W.cambios || C.nivel || F.length) ? `<details class="small"><summary class="muted">${C.nivel ? `<span class="pill ${C.nivel === "alta" ? "up" : C.nivel === "baja" ? "down" : "warn"}">Confianza ${esc(C.nivel)}</span> ` : ""}${F.length ? `${F.length} fuentes${C.medios ? ` de ${esc(C.medios)} medios` : ""} · ` : ""}qué ha cambiado y de dónde sale</summary>
+    ${W.cambios ? `<p style="margin:6px 0"><b>Cambios:</b> ${esc(W.cambios)}</p>` : ""}
+    ${W.eventos_clave?.length ? `<div><b>Eventos de la semana</b><ul>${li(W.eventos_clave)}</ul></div>` : ""}
+    ${C.contradicciones?.length ? `<div><b>Fuentes que no coinciden</b><ul>${li(C.contradicciones)}</ul></div>` : ""}
+    ${C.falta?.length ? `<div class="muted"><b>Datos que faltan</b><ul>${li(C.falta)}</ul></div>` : ""}
+    ${F.length ? `<div><b>Fuentes</b><ul>${F.map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a></li>`).join("")}</ul></div>` : ""}</details>` : "";
 }
 function weeklyRecords() {
   const seen = new Map();
