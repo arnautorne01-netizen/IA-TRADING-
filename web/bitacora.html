@@ -87,6 +87,15 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
+.week-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px}
+.wk{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.wk .n{font:700 1.6rem var(--f-mono)}
+.wk .bar{position:relative;height:6px;border-radius:3px;background:var(--line)}
+.wk .bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.wk .bar::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.verdict{font:700 1.3rem var(--f-body);padding:6px 14px;border-radius:999px;display:inline-block}
+.verdict.up{background:var(--up);color:#fff}.verdict.warn{background:#d69e2e;color:#fff}.verdict.down{background:var(--down);color:#fff}
+.ck td:first-child{width:28px;text-align:center}
 .seg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:6px 0}
 .seg button{font:inherit;font-size:.85rem;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -182,11 +191,17 @@ details summary{cursor:pointer;font-weight:600}
       <div>
         <div class="label" id="brief-date">Briefing del día</div>
         <h2 id="brief-title">Sesgo diario: 60% fundamental, 30% técnico, 10% sentimiento</h2>
-        <div class="small muted">Se actualiza de lunes a viernes a las 7:50, 11:20 y 16:20 (hora de Madrid)</div>
+        <div class="small muted">Briefing de lunes a viernes a las 7:50 y actualización cada 30 minutos de 8:20 a 21:50 (hora de Madrid)</div>
       </div>
       <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
     </div>
     <div id="brief-empty" class="banner info" hidden>Todavía no hay briefing guardado. Se genera cada día laborable por la mañana; mientras tanto puedes pegar noticias abajo y pedir el sesgo a la IA.</div>
+    <div class="panel" id="week-panel" hidden>
+      <div class="panel-head"><h3>Sesgo semanal</h3><span class="small muted" id="week-meta"></span></div>
+      <div class="week-grid" id="week-cards"></div>
+      <p class="small" id="week-sum" style="margin:0"></p>
+      <p class="small muted" style="margin:0">Convicción de −5 (fuertemente bajista) a +5 (fuertemente alcista) para toda la semana. Es otra pregunta distinta al sesgo del día: un par puede tener fondo alcista en la semana y bajar hoy.</p>
+    </div>
     <div class="grid" id="pair-cards" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr))"></div>
     <div class="grid g2">
       <div class="panel">
@@ -379,6 +394,13 @@ details summary{cursor:pointer;font-weight:600}
     <div class="panel-head">
       <h2>Mis operaciones</h2>
       <span class="muted small" id="o-strip"></span>
+    </div>
+    <div class="panel" id="check-panel">
+      <div class="panel-head"><h3>Chequeo antes de entrar</h3><span class="small muted">Sube la captura ANTES de abrir la operación</span></div>
+      <label class="drop" for="check-file" id="check-drop" style="padding:22px 18px"><b>Suelta aquí la captura de la entrada que estás pensando</b>
+        <span class="small muted">La IA la compara con tu checklist, el sesgo de hoy, la estructura y las noticias de la próxima hora, y te dice si entrar, esperar o no entrar.</span>
+        <input type="file" id="check-file" accept="image/png,image/jpeg,image/webp" hidden></label>
+      <div id="check-out" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
     <div class="panel" id="auto-panel">
       <label class="drop" id="auto-drop" for="auto-file" style="padding:34px 18px">
@@ -861,6 +883,8 @@ async function boot() {
     applyCuentaView();
     state.pending = snap.docs.filter(d => d.data()?.kind === "pending_shots").length; renderPending();
     state.pendingDeep = new Set(snap.docs.filter(d => d.data()?.kind === "pending_deep").map(d => d.data().trade_id));
+    state.checks = snap.docs.filter(d => ["check_result", "pending_check"].includes(d.data()?.kind)).map(d => ({id: d.id, ...d.data()})).sort((a, b) => String(b.created).localeCompare(String(a.created)));
+    renderChecks();
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
@@ -1394,7 +1418,7 @@ function renderBriefing() {
     const out = d.outcome ? `<span class="pill ${d.outcome.hit ? "up" : "down"}">${d.outcome.hit ? "Acertado" : "Fallado"}: cerró ${esc(d.outcome.change)}</span>` : "";
     return `<div class="panel pair-card">
       <div class="panel-head"><h3>${INS(p).label}</h3><span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span></div>
-      <div class="price num">${esc(d.price ?? "")}</div>
+      <div class="price num"${String(d.price ?? "").length > 14 ? ` style="font-size:.95rem;font-weight:500"` : ""}>${esc(d.price ?? "")}</div>
       <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
       ${out}
       ${d.confianza ? (() => { const C = d.confianza, li = a => (a || []).map(z => `<li>${esc(z)}</li>`).join("");
@@ -1414,6 +1438,7 @@ function renderBriefing() {
       </div></details>
     </div>`;
   }).join("");
+  renderWeekly(bs, b);
   $("#brief-summary").textContent = state.mercado === "fut" ? (b.summary_futuros || b.summary || "") : state.mercado === "todo" && b.summary_futuros ? `${b.summary || ""}\n\nFuturos: ${b.summary_futuros}` : (b.summary || "");
   const V = b.volumen;
   $("#vol-panel").hidden = !V;
@@ -1523,6 +1548,119 @@ $("#cd-float").addEventListener("click", () => { document.querySelector('[data-t
 setInterval(tickCountdowns, 1000);
 
 // =====================================================================
+// Sesgo semanal
+// =====================================================================
+const convLabel = c => c >= 4 ? "Fuertemente alcista" : c >= 2 ? "Alcista" : c >= 1 ? "Ligeramente alcista" : c <= -4 ? "Fuertemente bajista" : c <= -2 ? "Bajista" : c <= -1 ? "Ligeramente bajista" : "Neutral";
+function renderWeekly(bs, b) {
+  const src = bs.find(x => x.date <= b.date && x.semanal?.pares) || null, W = src?.semanal;
+  $("#week-panel").hidden = !W;
+  if (!W) return;
+  $("#week-meta").textContent = `${W.desde && W.hasta ? `del ${W.desde.slice(8)}/${W.desde.slice(5, 7)} al ${W.hasta.slice(8)}/${W.hasta.slice(5, 7)}` : W.semana || ""}${W.actualizado ? " · " + W.actualizado : ""}`;
+  $("#week-cards").innerHTML = VIS().filter(p => W.pares[p]).map(p => {
+    const d = W.pares[p], c = Math.max(-5, Math.min(5, Math.round(Number(d.conviccion) || 0))), col = c > 0 ? "var(--up)" : c < 0 ? "var(--down)" : "var(--muted)";
+    const o = W.outcome?.[p];
+    return `<div class="wk"><div class="row" style="justify-content:space-between"><b>${INS(p).label}</b>${o && typeof o.hit === "boolean" ? `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>` : ""}</div>
+      <div class="row" style="gap:8px;align-items:baseline"><span class="n" style="color:${col}">${c > 0 ? "+" : ""}${c}</span><span class="small muted">/ 5</span><span class="small" style="color:${col}">${convLabel(c)}</span></div>
+      <div class="bar" role="img" aria-label="Convicción ${c} de 5"><i style="background:${col};${c >= 0 ? `left:50%;width:${c * 10}%` : `right:50%;width:${-c * 10}%`}"></i></div>
+      ${d.razon ? `<div class="small">${esc(d.razon)}</div>` : ""}
+      ${d.claves?.length || d.niveles ? `<details class="small"><summary class="muted">Claves y niveles</summary><ul class="clean">${(d.claves || []).map(k => `<li>${esc(k)}</li>`).join("")}${d.niveles ? Object.entries(d.niveles).map(([k, v]) => `<li><b>${esc(k)}:</b> ${esc(v)}</li>`).join("") : ""}</ul></details>` : ""}</div>`;
+  }).join("");
+  $("#week-sum").textContent = state.mercado === "fut" ? (W.resumen_futuros || W.resumen || "") : (W.resumen || "");
+}
+function weeklyRecords() {
+  const seen = new Map();
+  for (const b of state.briefings) { const W = b.semanal; if (!W?.outcome || seen.has(W.semana)) continue; seen.set(W.semana, W); }
+  const out = [];
+  for (const W of seen.values()) for (const [p, o] of Object.entries(W.outcome)) if (typeof o?.hit === "boolean") out.push({semana: W.semana, pair: p, hit: o.hit, change: o.change});
+  return out;
+}
+
+// =====================================================================
+// Chequeo antes de entrar
+// =====================================================================
+const CHECK_SCHEMA = `{"instrumento":"EURUSD|GBPUSD|DXY|NAS100|SPX500","direccion":"Long|Short|null","veredicto":"Entra|Espera|No entres","puntuacion":0-100,"resumen":"2 frases con el porqué","checklist":[{"regla":"comprobación de su checklist","cumple":"si|no|no se ve","nota":"qué ves en el gráfico"}],"a_favor":["..."],"en_contra":["..."],"sesgo":"si va a favor o en contra del sesgo de hoy y de la semana, con el %","noticias":"riesgo de noticias en la próxima hora o 'sin noticias relevantes'","riesgo":{"entrada":número|null,"stop":número|null,"objetivo":número|null,"rr":número|null,"comentario":"si el stop está protegido y si el R:R compensa"},"que_esperar":"si es Espera: la confirmación concreta que falta; si es No entres: qué tendría que cambiar","invalidacion":"dónde deja de valer la idea"}`;
+function checkContext() {
+  const b = state.briefings.find(x => x.date === todayISO()) || state.briefings[0], now = Date.now();
+  const pairs = b ? Object.fromEntries(PAIRS.filter(p => b.pairs?.[p]).map(p => [p, {prob_subida: b.pairs[p].prob_up, sesgo: b.pairs[p].bias, niveles: b.pairs[p].levels, invalidacion: b.pairs[p].invalidation}])) : {};
+  const semana = b ? (state.briefings.find(x => x.date <= b.date && x.semanal?.pares)?.semanal?.pares || null) : null;
+  const news = (b?.date === todayISO() ? b.news || [] : []).map(n => ({n, at: newsAt(n, b.date)})).filter(e => e.at != null && e.at - now < 90 * 6e4 && now - e.at < 20 * 6e4)
+    .map(e => `${e.n.time} ${e.n.currency || ""} ${e.n.title} (${isPublished(e.n) ? "publicado: " + e.n.actual : "pendiente, en " + Math.round((e.at - now) / 6e4) + " min"})`);
+  const hoy = realTrades().filter(t => t.date === todayISO());
+  return `SESGO DE HOY (${b?.date || "sin briefing"}): ${JSON.stringify(pairs)}
+SESGO SEMANAL (convicción -5..+5): ${semana ? JSON.stringify(Object.fromEntries(Object.entries(semana).map(([k, v]) => [k, v.conviccion]))) : "no disponible"}
+NOTICIAS EN LA PRÓXIMA HORA Y MEDIA: ${news.length ? news.join(" | ") : "ninguna de alto impacto"}
+ESTRUCTURA CON VELAS REALES: ${PAIRS.map(p => mtfText(p) || p + ": sin velas").join(" | ")}
+OPERACIONES REALES DE HOY: ${hoy.length} (${hoy.filter(t => t.win).length} ganadas, ${hoy.filter(t => t.loss).length} perdidas). Hora actual en Madrid: ${new Date().toLocaleTimeString("es-ES", {timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit"})}.`;
+}
+function checkPrompt() {
+  const P = activeProfile();
+  return `${COACH}
+${stratTxt()}
+CHECKLIST DEL TRADER: ${JSON.stringify(P?.checklist || [])}
+REGLAS DEL TRADER: ${JSON.stringify(P?.reglas || [])}
+${checkContext()}
+${typeof RULE_TEXT !== "undefined" ? RULE_TEXT : ""}
+El trader te pasa la captura de una entrada que está PENSANDO abrir (todavía no ha entrado). Haz de filtro antes de apretar el botón, como un mentor exigente:
+1) Identifica instrumento, dirección (por la herramienta de posición si está dibujada), entrada, stop y objetivo.
+2) Recorre su checklist punto por punto con lo que se ve en el gráfico ("no se ve" si no se puede saber).
+3) Compara con el sesgo del día y de la semana, la estructura y las noticias de la próxima hora (una noticia de alto impacto en menos de 30 minutos es motivo para esperar).
+4) Valora el riesgo: si el stop está protegido por estructura o expuesto a un barrido, y si el R:R compensa.
+Veredicto: "Entra" solo si cumple lo esencial de su checklist, no va claramente contra el sesgo y no hay noticia fuerte inminente; "Espera" si la idea es buena pero falta una confirmación concreta o hay noticia cerca; "No entres" si incumple reglas clave. Sé honesto: proteger la cuenta es más importante que no perder la operación.
+Responde SOLO con un objeto JSON con esta forma: ${CHECK_SCHEMA}`;
+}
+function checkCard(r, meta = "") {
+  const v = r.veredicto || "—", c = v === "Entra" ? "up" : v === "Espera" ? "warn" : "down", R = r.riesgo || {};
+  const mark = x => x === "si" ? `<span class="pos">✓</span>` : x === "no" ? `<span class="neg">✗</span>` : `<span class="muted">?</span>`;
+  return `<div class="panel" style="background:var(--bg)">
+    <div class="panel-head"><div class="row" style="gap:10px"><span class="verdict ${c}">${esc(v)}</span><span class="small muted">${esc(r.instrumento ? INS(canonPair(r.instrumento) || r.instrumento).label : "")} ${esc(r.direccion || "")}${r.puntuacion != null ? " · " + esc(r.puntuacion) + "/100" : ""}</span></div><span class="small muted">${esc(meta)}</span></div>
+    ${r.resumen ? `<p style="margin:0">${esc(r.resumen)}</p>` : ""}
+    ${r.checklist?.length ? `<div class="tablebox"><table class="ck"><tbody>${r.checklist.map(x => `<tr><td>${mark(x.cumple)}</td><td><b>${esc(x.regla)}</b>${x.nota ? `<div class="small muted">${esc(x.nota)}</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : ""}
+    <div class="grid g2">${r.a_favor?.length ? `<div class="small"><b>A favor</b><ul>${r.a_favor.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}${r.en_contra?.length ? `<div class="small"><b>En contra</b><ul>${r.en_contra.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</div>
+    ${r.sesgo ? `<p class="small" style="margin:0"><b>Sesgo:</b> ${esc(r.sesgo)}</p>` : ""}
+    ${r.noticias ? `<p class="small" style="margin:0"><b>Noticias:</b> ${esc(r.noticias)}</p>` : ""}
+    ${R.comentario || R.rr != null ? `<p class="small" style="margin:0"><b>Riesgo:</b> ${[R.entrada != null ? "entrada " + R.entrada : "", R.stop != null ? "stop " + R.stop : "", R.objetivo != null ? "objetivo " + R.objetivo : "", R.rr != null ? "R:R " + R.rr : ""].filter(Boolean).join(" · ")}${R.comentario ? ". " + esc(R.comentario) : ""}</p>` : ""}
+    ${r.que_esperar ? `<div class="banner info"><b>${v === "Entra" ? "Ojo" : v === "Espera" ? "Qué esperar" : "Qué tendría que cambiar"}:</b> ${esc(r.que_esperar)}</div>` : ""}
+    ${r.invalidacion ? `<p class="small muted" style="margin:0"><b>La idea deja de valer:</b> ${esc(r.invalidacion)}</p>` : ""}
+  </div>`;
+}
+function renderChecks() {
+  const out = $("#check-out"); if (!out || out.dataset.live === "1") return;
+  const recent = (state.checks || []).filter(c => Date.now() - Date.parse(c.created || 0) < 12 * 3600e3).slice(0, 3);
+  out.innerHTML = recent.map(c => c.kind === "pending_check"
+    ? `<div class="banner info">Chequeo de las ${new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"})} en cola: la IA lo está revisando (1-3 min).</div>`
+    : checkCard(c, "Chequeo de las " + new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"}))).join("");
+}
+async function runCheck(file) {
+  if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) return;
+  const out = $("#check-out"); out.dataset.live = "1";
+  const status = document.createElement("div"); status.className = "banner info"; status.textContent = "La IA está revisando tu entrada…"; out.prepend(status);
+  try {
+    if (!state.sample || state.imgLimit === 0) throw {code: "images_unavailable"};
+    const r = await state.sample.json(checkPrompt(), {images: [file], modelTier: "complex"});
+    if (!r?.veredicto) throw {code: "invalid_json"};
+    status.outerHTML = checkCard(r, "Ahora");
+    if (col) { try { const shot = state.assets ? (await state.assets.upload(file)).id : null; await col.doc("check_" + Date.now().toString(36)).set({kind: "check_result", ...r, shot, created: new Date().toISOString()}); } catch {} }
+  } catch (e) {
+    if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && col && state.assets) {
+      try {
+        const shot = (await state.assets.upload(file)).id;
+        await col.doc("check_" + Date.now().toString(36)).set({kind: "pending_check", shot, contexto: checkContext(), created: new Date().toISOString()});
+        const mcp = await use("mcp"); let fired = false;
+        if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha pedido un CHEQUEO ANTES DE ENTRAR: es urgente, hazlo lo primero."}); fired = true; } catch {} }
+        status.textContent = fired ? "Captura recibida. La IA la está revisando en segundo plano: el veredicto aparecerá aquí en 1-3 minutos." : "Captura recibida; se revisará en la próxima revisión automática.";
+        out.dataset.live = ""; return;
+      } catch (err) { status.className = "banner"; status.textContent = "No se pudo enviar la captura: " + (err.message || err.code); return; }
+    }
+    status.className = "banner"; status.textContent = e.code === "invalid_json" ? "No pude leer bien la captura. Prueba con una imagen donde se vean el precio y la herramienta de posición." : AI_ERR[e.code] || "No se pudo revisar: " + (e.message || e.code);
+  } finally { setTimeout(() => { out.dataset.live = ""; }, 500); }
+}
+$("#check-file").addEventListener("change", e => { runCheck(e.target.files[0]); e.target.value = ""; });
+{ const z = $("#check-drop");
+  ["dragenter", "dragover"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove("over"); }));
+  z.addEventListener("drop", e => runCheck(e.dataTransfer.files[0])); }
+
+// =====================================================================
 // Registro de aciertos del sesgo diario
 // =====================================================================
 function pctChange(o) { const m = String(o?.change ?? "").replace(",", ".").replace("−", "-").match(/[-+]?\d+(\.\d+)?/); return m ? +m[0] : null; }
@@ -1546,6 +1684,7 @@ function renderAccuracy() {
   const tot = rate(R, "hitFin");
   $("#acc-kpis").innerHTML = [["Aciertos (% final)", fmt(tot)], ["Aciertos (% de primera hora)", fmt(rate(R, "hitFirst"))],
     ...VIS().filter(p => R.some(r => r.pair === p)).map(p => [INS(p).label, fmt(rate(R.filter(r => r.pair === p), "hitFin"))]),
+    ["Aciertos semanales", (() => { const w = weeklyRecords().filter(r => inMercado(r.pair)); const h = w.filter(r => r.hit).length; return w.length ? `${h}/${w.length} <span class="small muted">(${Math.round(100 * h / w.length)}%)</span>` : `<span class="small muted">sin semanas cerradas</span>`; })()],
     ["Días registrados", days.length], ["Racha actual", streak ? `${streak} ${streak === 1 ? "día" : "días"} acertando` : "—"]]
     .map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
   const buckets = [[0.53, 0.6, "53-60%"], [0.6, 0.7, "60-70%"], [0.7, 0.81, "70-80%"]].map(([a, b, l]) => {
