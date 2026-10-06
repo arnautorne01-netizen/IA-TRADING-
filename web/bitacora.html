@@ -87,7 +87,8 @@ ul.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column
 ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
-.week-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px}
+.fx-w table th{font-weight:600;text-align:left}.fx-w th,.fx-w td{padding:5px 6px}.fx-w td.num{white-space:nowrap}
+.week-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px}
 .wk{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
 .wk .n{font:700 1.6rem var(--f-mono)}
 .wk .bar{position:relative;height:6px;border-radius:3px;background:var(--line)}
@@ -1430,6 +1431,7 @@ function renderBriefing() {
           ${C.falta?.length ? `<div class="small muted"><b>Datos que faltan</b><ul>${li(C.falta)}</ul></div>` : ""}</details>`; })() : ""}
       ${d.scores ? `<div class="mix">${[["fundamental", "Fundamental · 60%"], ["tecnico", "Técnico · 30%"], ["sentimiento", "Sentimiento · 10%"]].map(([k, l]) => { const v = Math.max(-1, Math.min(1, Number(d.scores[k]) || 0));
         return `<div class="mix-row"><span>${l}</span><div class="dv" role="img" aria-label="${l}: ${v.toFixed(2)}"><i class="${v >= 0 ? "p" : "n"}" style="width:${Math.abs(v) * 50}%"></i></div><span class="num small ${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(2)}</span></div>`; }).join("")}</div>` : ""}
+      ${factorTable(d.factores)}
       <dl class="levels">${Object.entries(d.levels || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
       <details class="more"><summary class="small">Ver el análisis completo${d.drivers?.length ? ` (${d.drivers.length} factores)` : ""}</summary><div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
       ${d.fundamental ? `<p style="margin:0"><b>Fundamental:</b> ${esc(d.fundamental)}</p>` : ""}
@@ -1552,6 +1554,16 @@ setInterval(tickCountdowns, 1000);
 // Sesgo semanal
 // =====================================================================
 const convLabel = c => c >= 4 ? "Fuertemente alcista" : c >= 2 ? "Alcista" : c >= 1 ? "Ligeramente alcista" : c <= -4 ? "Fuertemente bajista" : c <= -2 ? "Bajista" : c <= -1 ? "Ligeramente bajista" : "Neutral";
+function factorTable(fs, titulo = "Peso de cada factor fundamental") {
+  if (!fs?.length) return "";
+  const rows = fs.map(f => ({...f, peso: Number(f.peso) || 0, score: Math.max(-1, Math.min(1, Number(f.score) || 0))})).map(f => ({...f, ap: f.peso * f.score})).sort((a, b) => b.peso - a.peso || Math.abs(b.ap) - Math.abs(a.ap));
+  const tot = rows.reduce((s, f) => s + f.ap, 0);
+  return `<details class="small fx-w"><summary><b>${esc(titulo)}</b> <span class="muted">· resultado ${tot > 0 ? "+" : ""}${tot.toFixed(2)}</span></summary>
+    <div class="tablebox"><table class="ck"><thead><tr><th>Peso</th><th>Factor</th><th>Dir.</th><th>Aporta</th></tr></thead><tbody>${rows.map(f => `<tr><td class="num">${Math.round(f.peso * 100)}%</td><td><b>${esc(f.factor)}</b>${f.dato ? `<div class="muted">${esc(f.dato)}</div>` : ""}</td>
+      <td class="num ${cls(f.score)}">${f.score > 0 ? "+" : ""}${f.score.toFixed(1)}</td>
+      <td class="num ${cls(f.ap)}">${f.ap > 0 ? "+" : ""}${f.ap.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="muted" style="margin:4px 0 0">Aporta = peso × dirección (de −1 a +1). La suma es la puntuación fundamental que entra en la probabilidad.</p></details>`;
+}
 function renderWeekly(bs, b) {
   const src = bs.find(x => x.date <= b.date && x.semanal?.pares) || null, W = src?.semanal;
   if (!W) { $("#week-extra").innerHTML = ""; $("#week-meta").textContent = ""; $("#week-cards").innerHTML = `<p class="small muted" style="margin:0">Aún no hay sesgo semanal: se calcula cada lunes con el briefing de las 7:50 y se revisa a diario.</p>`; $("#week-sum").textContent = ""; return; }
@@ -1562,7 +1574,9 @@ function renderWeekly(bs, b) {
     return `<div class="wk"><div class="row" style="justify-content:space-between"><b>${INS(p).label}</b>${o && typeof o.hit === "boolean" ? `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>` : ""}</div>
       <div class="row" style="gap:8px;align-items:baseline"><span class="n" style="color:${col}">${c > 0 ? "+" : ""}${c}</span><span class="small muted">/ 5</span><span class="small" style="color:${col}">${convLabel(c)}</span></div>
       <div class="bar" role="img" aria-label="Convicción ${c} de 5"><i style="background:${col};${c >= 0 ? `left:50%;width:${c * 10}%` : `right:50%;width:${-c * 10}%`}"></i></div>
+      ${d.prob != null ? `<div class="small"><b>${Math.round(d.prob * 100)}%</b> de cerrar la semana por encima de la apertura del lunes${d.scores ? ` <span class="muted">· fundamental ${d.scores.fundamental > 0 ? "+" : ""}${Number(d.scores.fundamental).toFixed(2)} · técnico ${d.scores.tecnico > 0 ? "+" : ""}${Number(d.scores.tecnico).toFixed(2)}</span>` : ""}</div>` : ""}
       ${d.razon ? `<div class="small">${esc(d.razon)}</div>` : ""}
+      ${factorTable(d.factores)}
       ${d.claves?.length || d.niveles ? `<details class="small"><summary class="muted">Claves y niveles</summary><ul class="clean">${(d.claves || []).map(k => `<li>${esc(k)}</li>`).join("")}${d.niveles ? Object.entries(d.niveles).map(([k, v]) => `<li><b>${esc(k)}:</b> ${esc(v)}</li>`).join("") : ""}</ul></details>` : ""}</div>`;
   }).join("");
   $("#week-sum").textContent = state.mercado === "fut" ? (W.resumen_futuros || W.resumen || "") : (W.resumen || "");
