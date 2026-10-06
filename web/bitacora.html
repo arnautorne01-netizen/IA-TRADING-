@@ -1615,11 +1615,13 @@ El trader te pasa la captura de una entrada que está PENSANDO abrir (todavía n
 Veredicto: "Entra" solo si cumple lo esencial de su checklist, no va claramente contra el sesgo y no hay noticia fuerte inminente; "Espera" si la idea es buena pero falta una confirmación concreta o hay noticia cerca; "No entres" si incumple reglas clave. Sé honesto: proteger la cuenta es más importante que no perder la operación.
 Responde SOLO con un objeto JSON con esta forma: ${CHECK_SCHEMA}`;
 }
-function checkCard(r, meta = "") {
+function checkCard(r, meta = "", id = "") {
   const v = r.veredicto || "—", c = v === "Entra" ? "up" : v === "Espera" ? "warn" : "down", R = r.riesgo || {};
   const mark = x => x === "si" ? `<span class="pos">✓</span>` : x === "no" ? `<span class="neg">✗</span>` : `<span class="muted">?</span>`;
   return `<div class="panel" style="background:var(--bg)">
     <div class="panel-head"><div class="row" style="gap:10px"><span class="verdict ${c}">${esc(v)}</span><span class="small muted">${esc(r.instrumento ? INS(canonPair(r.instrumento) || r.instrumento).label : "")} ${esc(r.direccion || "")}${r.puntuacion != null ? " · " + esc(r.puntuacion) + "/100" : ""}</span></div><span class="small muted">${esc(meta)}</span></div>
+    ${r.respuesta ? `<div class="banner info"><b>Revisión ${esc(r.revision || "")}:</b> ${esc(r.respuesta)}</div>` : ""}
+    ${r.shot ? `<div class="thumbs"><a href="/_blob/${esc(r.shot)}" target="_blank" rel="noopener"><img src="/_blob/${esc(r.shot)}" alt="Captura revisada" style="max-height:120px;border-radius:4px;border:1px solid var(--line)"></a></div>` : ""}
     ${r.resumen ? `<p style="margin:0">${esc(r.resumen)}</p>` : ""}
     ${r.checklist?.length ? `<div class="tablebox"><table class="ck"><tbody>${r.checklist.map(x => `<tr><td>${mark(x.cumple)}</td><td><b>${esc(x.regla)}</b>${x.nota ? `<div class="small muted">${esc(x.nota)}</div>` : ""}</td></tr>`).join("")}</tbody></table></div>` : ""}
     <div class="grid g2">${r.a_favor?.length ? `<div class="small"><b>A favor</b><ul>${r.a_favor.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}${r.en_contra?.length ? `<div class="small"><b>En contra</b><ul>${r.en_contra.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}</div>
@@ -1628,14 +1630,65 @@ function checkCard(r, meta = "") {
     ${R.comentario || R.rr != null ? `<p class="small" style="margin:0"><b>Riesgo:</b> ${[R.entrada != null ? "entrada " + R.entrada : "", R.stop != null ? "stop " + R.stop : "", R.objetivo != null ? "objetivo " + R.objetivo : "", R.rr != null ? "R:R " + R.rr : ""].filter(Boolean).join(" · ")}${R.comentario ? ". " + esc(R.comentario) : ""}</p>` : ""}
     ${r.que_esperar ? `<div class="banner info"><b>${v === "Entra" ? "Ojo" : v === "Espera" ? "Qué esperar" : "Qué tendría que cambiar"}:</b> ${esc(r.que_esperar)}</div>` : ""}
     ${r.invalidacion ? `<p class="small muted" style="margin:0"><b>La idea deja de valer:</b> ${esc(r.invalidacion)}</p>` : ""}
+    ${r.correcciones?.length ? `<details class="small"><summary class="muted">Tus comentarios (${r.correcciones.length})</summary><ul>${r.correcciones.map(c => `<li>${esc(c.texto)}${c.previo ? ` <span class="muted">(antes: ${esc(c.previo)})</span>` : ""}</li>`).join("")}</ul></details>` : ""}
+    ${id && (r.shot || checkFiles.has(id)) ? `<form class="recheck" data-recheck="${esc(id)}" style="display:flex;flex-direction:column;gap:6px">
+      <label class="small" for="rc-${esc(id)}"><b>¿Se le ha escapado algo?</b> Dile qué no ha visto o qué ha leído mal y vuelve a revisar.</label>
+      <textarea id="rc-${esc(id)}" rows="2" placeholder="Ej.: sí hay barrido del mínimo de Asia a las 9:15; el stop está en 1.3185, no en 1.3190; ya tengo BOS en M5"></textarea>
+      <button type="submit" class="btn primary" style="align-self:flex-start">Volver a revisar</button></form>` : ""}
   </div>`;
 }
+var checkFiles = new Map();
+var RECHECK_SCHEMA = CHECK_SCHEMA.replace(/}$/, ',"respuesta":"1-2 frases: qué has corregido tras su comentario, o por qué mantienes lo que dijiste"}');
+function recheckPrompt(prev, texto) {
+  const P = {...prev}; ["kind", "shot", "created", "correcciones", "respuesta", "revision", "procesado"].forEach(k => delete P[k]);
+  return `${checkPrompt().replace(/Responde SOLO con un objeto JSON[\s\S]*$/, "")}
+REVISIÓN PEDIDA POR EL TRADER. Tu chequeo anterior de esta misma captura fue: ${JSON.stringify(P)}
+${prev.correcciones?.length ? `Comentarios anteriores del trader: ${prev.correcciones.map(c => c.texto).join(" | ")}\n` : ""}Ahora el trader dice: «${texto}».
+Vuelve a mirar la captura con atención a lo que señala. Si tiene razón (se ve en el gráfico o es un dato que solo él puede saber, como una confirmación en otra temporalidad o el precio exacto de su orden), corrige el checklist, los niveles, la puntuación y el veredicto. Si lo que dice no se ve o contradice el gráfico, mantenlo y explícale por qué con respeto. No cambies el veredicto solo por complacerle: cambia solo lo que el comentario justifique.
+Responde SOLO con un objeto JSON con esta forma: ${RECHECK_SCHEMA}`;
+}
+async function recheck(id, texto, form) {
+  const prev = (state.checks || []).find(c => c.id === id); if (!prev || !texto) return;
+  const btn = form.querySelector("button"); btn.disabled = true; btn.textContent = "Revisando de nuevo…";
+  const out = $("#check-out"); out.dataset.live = "1";
+  const correcciones = [...(prev.correcciones || []), {texto, previo: prev.veredicto || "", at: new Date().toISOString()}], revision = (prev.revision || 1) + 1;
+  const keep = {shot: prev.shot || null, created: prev.created || new Date().toISOString(), correcciones, revision};
+  const card = form.closest(".panel");
+  try {
+    const blob = checkFiles.get(id) || (prev.shot ? await fetchBlob(prev.shot) : null);
+    if (!state.sample || state.imgLimit === 0 || !blob) throw {code: "images_unavailable"};
+    const r = await state.sample.json(recheckPrompt(prev, texto), {images: [blob], modelTier: "complex"});
+    if (!r?.veredicto) throw {code: "invalid_json"};
+    const doc = {kind: "check_result", ...r, ...keep};
+    const i = state.checks.indexOf(prev); state.checks[i] = {id, ...doc};
+    card.outerHTML = checkCard(doc, "Revisado ahora", id);
+    if (col) { try { await col.doc(id).set(doc); } catch {} }
+  } catch (e) {
+    if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && col && prev.shot) {
+      try {
+        const P = {...prev}; delete P.id;
+        await col.doc(id).set({kind: "pending_check", ...keep, previo: P, correccion: texto, contexto: checkContext()});
+        const mcp = await use("mcp"); let fired = false;
+        if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha pedido VOLVER A REVISAR un CHEQUEO ANTES DE ENTRAR con un comentario: es urgente, hazlo lo primero."}); fired = true; } catch {} }
+        card.outerHTML = `<div class="banner info">${fired ? "Comentario enviado. La IA está volviendo a revisar la captura: el nuevo veredicto aparecerá aquí en 1-3 minutos." : "Comentario guardado; se revisará en la próxima revisión automática."}</div>`;
+        return;
+      } catch (err) { e = err; }
+    }
+    btn.disabled = false; btn.textContent = "Volver a revisar";
+    form.insertAdjacentHTML("beforeend", `<div class="banner">${esc(e.code === "invalid_json" ? "No pude rehacer el chequeo; prueba otra vez." : AI_ERR[e.code] || "No se pudo revisar: " + (e.message || e.code))}</div>`);
+  } finally { setTimeout(() => { out.dataset.live = ""; }, 500); }
+}
+$("#check-out").addEventListener("submit", e => {
+  const f = e.target.closest("form[data-recheck]"); if (!f) return; e.preventDefault();
+  const t = f.querySelector("textarea").value.trim(); if (!t) { f.querySelector("textarea").focus(); return; }
+  recheck(f.dataset.recheck, t, f);
+});
 function renderChecks() {
   const out = $("#check-out"); if (!out || out.dataset.live === "1") return;
   const recent = (state.checks || []).filter(c => Date.now() - Date.parse(c.created || 0) < 12 * 3600e3).slice(0, 3);
   out.innerHTML = recent.map(c => c.kind === "pending_check"
-    ? `<div class="banner info">Chequeo de las ${new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"})} en cola: la IA lo está revisando (1-3 min).</div>`
-    : checkCard(c, "Chequeo de las " + new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"}))).join("");
+    ? `<div class="banner info">Chequeo de las ${new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"})} en cola: la IA lo está ${c.correccion ? "volviendo a revisar con tu comentario" : "revisando"} (1-3 min).</div>`
+    : checkCard(c, "Chequeo de las " + new Date(c.created).toLocaleTimeString("es-ES", {hour: "2-digit", minute: "2-digit"}) + (c.revision > 1 ? ` · revisión ${c.revision}` : ""), c.id)).join("");
 }
 async function runCheck(file) {
   if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) return;
@@ -1645,8 +1698,10 @@ async function runCheck(file) {
     if (!state.sample || state.imgLimit === 0) throw {code: "images_unavailable"};
     const r = await state.sample.json(checkPrompt(), {images: [file], modelTier: "complex"});
     if (!r?.veredicto) throw {code: "invalid_json"};
-    status.outerHTML = checkCard(r, "Ahora");
-    if (col) { try { const shot = state.assets ? (await state.assets.upload(file)).id : null; await col.doc("check_" + Date.now().toString(36)).set({kind: "check_result", ...r, shot, created: new Date().toISOString()}); } catch {} }
+    const id = "check_" + Date.now().toString(36), doc = {kind: "check_result", ...r, shot: null, created: new Date().toISOString()};
+    checkFiles.set(id, file); state.checks = [{id, ...doc}, ...(state.checks || [])];
+    status.outerHTML = checkCard(doc, "Ahora", id);
+    if (col) { try { doc.shot = state.assets ? (await state.assets.upload(file)).id : null; state.checks[0].shot = doc.shot; await col.doc(id).set(doc); } catch {} }
   } catch (e) {
     if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && col && state.assets) {
       try {
