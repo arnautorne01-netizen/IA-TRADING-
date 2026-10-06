@@ -88,6 +88,7 @@ ul.drivers li{display:grid;grid-template-columns:24px 1fr;gap:6px}
 ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .thumbs{display:flex;gap:8px;flex-wrap:wrap}
 .fx-w table th{font-weight:600;text-align:left}.fx-w th,.fx-w td{padding:5px 6px}.fx-w td.num{white-space:nowrap}
+.sq-log{display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}.sq-m{padding:8px 10px;border-radius:8px;max-width:85ch}.sq-m.yo{align-self:flex-end;background:var(--bg);border:1px solid var(--line)}.sq-m.ia{background:var(--panel,transparent);border:1px solid var(--line)}.sq-m .sq-act{margin-top:4px}.sq-pin{border-left:3px solid var(--warn,#c80);padding:6px 10px;margin:0 0 6px;background:var(--bg)}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .week-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px}
 .wk{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
 .wk .n{font:700 1.6rem var(--f-mono)}
@@ -511,6 +512,18 @@ details summary{cursor:pointer;font-weight:600}
         <div class="panel-head"><h3>Resumen</h3><span class="pill" id="s-conf"></span></div>
         <p id="s-summary" style="margin:0;max-width:80ch"></p>
       </div>
+      <div class="panel" id="sq-panel">
+        <div class="panel-head"><h3>Pregúntale a la IA sobre tu estrategia</h3><span class="small muted">Se guarda para que no se te olvide</span></div>
+        <div id="sq-pins"></div>
+        <div class="chips" id="sq-quick"></div>
+        <div id="sq-log" class="sq-log" aria-live="polite"></div>
+        <form id="sq-form" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <label class="sr-only" for="sq-txt">Tu pregunta</label>
+          <textarea id="sq-txt" rows="2" style="flex:1 1 260px" placeholder="Ej.: ¿qué tiene que pasar exactamente para que entre? ¿Dónde pongo el stop?"></textarea>
+          <button type="submit" class="btn primary">Preguntar</button>
+        </form>
+        <p class="small muted" id="sq-st" role="status" style="margin:0"></p>
+      </div>
       <div class="grid g2">
         <div class="panel"><h3>Tu modelo de entrada, paso a paso</h3><ol class="clean" id="s-steps"></ol></div>
         <div class="panel"><h3>Puntos clave de tu operativa</h3><ul class="clean" id="s-keys"></ul></div>
@@ -893,6 +906,8 @@ async function boot() {
     state.pendingDeep = new Set(snap.docs.filter(d => d.data()?.kind === "pending_deep").map(d => d.data().trade_id));
     state.checks = snap.docs.filter(d => ["check_result", "pending_check"].includes(d.data()?.kind)).map(d => ({id: d.id, ...d.data()})).sort((a, b) => String(b.created).localeCompare(String(a.created)));
     renderChecks();
+    const sc = snap.docs.find(d => d.id === "strategy_chat"); if (sc) state.stratChat = sc.data();
+    state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
@@ -2529,6 +2544,59 @@ function preItems(P) {
   items.push("R:R de 2 o más", "No hay noticia de alto impacto en los próximos 30 minutos", "Estoy tranquilo, no busco recuperar una pérdida");
   return items;
 }
+const SQ_QUICK = ["Resúmeme mi estrategia en 3 pasos", "¿Qué tengo que comprobar antes de entrar?", "¿Dónde pongo el stop y el objetivo?", "¿Cuál es el error que más repito?", "¿A qué hora y en qué instrumento me va mejor?", "¿Cuándo NO debo operar?"];
+function sqData() { return state.stratChat || {mensajes: [], fijados: []}; }
+function renderStratChat() {
+  const C = sqData(), log = $("#sq-log"); if (!log) return;
+  $("#sq-quick").innerHTML = SQ_QUICK.map(q => `<button type="button" class="pill" data-sq="${esc(q)}">${esc(q)}</button>`).join("");
+  $("#sq-pins").innerHTML = (C.fijados || []).length ? `<div class="small"><b>📌 Tus recordatorios</b></div>${C.fijados.map((t, i) => `<div class="sq-pin small">${mdLite(t).replace(/\n/g, "<br>")} <button type="button" class="btn small" data-sq-unpin="${i}" aria-label="Quitar recordatorio">Quitar</button></div>`).join("")}` : "";
+  const ms = C.mensajes || [];
+  log.innerHTML = ms.length ? ms.map((m, i) => `<div class="sq-m ${m.rol === "yo" ? "yo" : "ia"}"><div class="small muted">${m.rol === "yo" ? "Tú" : "IA"} · ${esc(new Date(m.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))}</div><div>${mdLite(m.texto || "").replace(/\n/g, "<br>")}</div>${m.rol === "ia" && m.texto ? `<div class="sq-act"><button type="button" class="btn small" data-sq-pin="${i}">📌 Fijar como recordatorio</button></div>` : ""}</div>`).join("")
+    : `<p class="small muted" style="margin:0">Pregunta lo que quieras sobre tu estrategia: cómo entras, dónde va el stop, qué confluencias importan, cuándo no operar… Las respuestas se guardan aquí y puedes fijar las importantes arriba como recordatorio.</p>`;
+  log.scrollTop = log.scrollHeight;
+}
+async function saveStratChat(C) { state.stratChat = C; renderStratChat(); if (col) { try { await col.doc("strategy_chat").set({kind: "strategy_chat", ...C}); } catch {} } }
+function sqPrompt(q, C) {
+  const P = activeProfile(), hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
+  return `${COACH}
+El trader tiene TDAH y se le olvidan los detalles de su propia estrategia: contesta CORTO y CLARO (máximo 8 líneas), con pasos numerados o viñetas cuando ayude, sin rodeos, y termina con una línea «Recuerda: …» con lo más importante en una frase. Usa SOLO su estrategia detectada y sus operaciones; si algo no está en los datos, dilo y no lo inventes.
+ESTRATEGIA DETECTADA: ${JSON.stringify(P || {})}
+OPERACIONES (CSV, columna cuenta = Real o Backtest): 
+${compactCSV(state.allTrades || state.trades, 120)}
+${hist ? "CONVERSACIÓN ANTERIOR:\n" + hist : ""}
+PREGUNTA DEL TRADER: ${q}
+Responde SOLO con un objeto JSON: {"respuesta":"texto en español; puedes usar saltos de línea y **negritas**"}`;
+}
+async function askStrategy(q) {
+  q = (q || "").trim(); if (!q) return;
+  const st = $("#sq-st"), btn = $("#sq-form button"), C0 = sqData();
+  const C = {mensajes: [...(C0.mensajes || []), {rol: "yo", texto: q, at: new Date().toISOString()}].slice(-40), fijados: C0.fijados || []};
+  await saveStratChat(C); $("#sq-txt").value = ""; btn.disabled = true; st.textContent = "La IA está pensando…";
+  try {
+    if (!state.sample) throw {code: "sampling_disabled"};
+    const r = await state.sample.json(sqPrompt(q, C0), {modelTier: "complex"});
+    if (!r?.respuesta) throw {code: "invalid_json"};
+    await saveStratChat({...C, mensajes: [...C.mensajes, {rol: "ia", texto: r.respuesta, at: new Date().toISOString()}].slice(-40)}); st.textContent = "";
+  } catch (e) {
+    if (["sampling_disabled", "not_declared"].includes(e.code) && col) {
+      try {
+        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", pregunta: q, created: new Date().toISOString()});
+        const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha hecho una PREGUNTA SOBRE SU ESTRATEGIA: contéstala lo primero."}); } catch {} }
+        st.textContent = "Pregunta enviada: la respuesta aparecerá aquí en 1-3 minutos."; return;
+      } catch {}
+    }
+    st.textContent = e.code === "invalid_json" ? "No pude generar la respuesta; prueba otra vez." : AI_ERR[e.code] || "No se pudo preguntar: " + (e.message || e.code);
+  } finally { btn.disabled = false; }
+}
+document.addEventListener("click", e => {
+  const q = e.target.closest("[data-sq]"); if (q) { askStrategy(q.dataset.sq); return; }
+  const pin = e.target.closest("[data-sq-pin]");
+  if (pin) { const C = sqData(), m = C.mensajes[+pin.dataset.sqPin]; if (m && !(C.fijados || []).includes(m.texto)) saveStratChat({...C, fijados: [...(C.fijados || []), m.texto].slice(-10)}); return; }
+  const un = e.target.closest("[data-sq-unpin]");
+  if (un) { const C = sqData(); saveStratChat({...C, fijados: (C.fijados || []).filter((_, i) => i !== +un.dataset.sqUnpin)}); }
+});
+$("#sq-form").addEventListener("submit", e => { e.preventDefault(); askStrategy($("#sq-txt").value); });
+$("#sq-txt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askStrategy($("#sq-txt").value); } });
 function renderStrategy() {
   const ts = state.trades, dec = ts.filter(t => t.win || t.loss), P = state.profile;
   const few = $("#s-few");
@@ -2554,6 +2622,7 @@ function renderStrategy() {
     $("#s-risk").innerHTML = dl(P.riesgo);
     $("#s-works").innerHTML = li(P.cuando_funciona); $("#s-fails").innerHTML = li(P.cuando_falla);
     $("#s-errors").innerHTML = li(P.errores); $("#s-rules").innerHTML = li(P.reglas);
+    renderStratChat();
   } else {
     $("#s-status").textContent = ts.length ? "Aún no has detectado tu estrategia con IA. Pulsa el botón de arriba." : "";
   }
