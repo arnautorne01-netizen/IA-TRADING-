@@ -196,7 +196,7 @@ details summary{cursor:pointer;font-weight:600}
       <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
     </div>
     <div id="brief-empty" class="banner info" hidden>Todavía no hay briefing guardado. Se genera cada día laborable por la mañana; mientras tanto puedes pegar noticias abajo y pedir el sesgo a la IA.</div>
-    <div class="panel" id="week-panel" hidden>
+    <div class="panel" id="week-panel">
       <div class="panel-head"><h3>Sesgo semanal</h3><span class="small muted" id="week-meta"></span></div>
       <div class="week-grid" id="week-cards"></div>
       <p class="small" id="week-sum" style="margin:0"></p>
@@ -1553,8 +1553,7 @@ setInterval(tickCountdowns, 1000);
 const convLabel = c => c >= 4 ? "Fuertemente alcista" : c >= 2 ? "Alcista" : c >= 1 ? "Ligeramente alcista" : c <= -4 ? "Fuertemente bajista" : c <= -2 ? "Bajista" : c <= -1 ? "Ligeramente bajista" : "Neutral";
 function renderWeekly(bs, b) {
   const src = bs.find(x => x.date <= b.date && x.semanal?.pares) || null, W = src?.semanal;
-  $("#week-panel").hidden = !W;
-  if (!W) return;
+  if (!W) { $("#week-meta").textContent = ""; $("#week-cards").innerHTML = `<p class="small muted" style="margin:0">Aún no hay sesgo semanal: se calcula cada lunes con el briefing de las 7:50 y se revisa a diario.</p>`; $("#week-sum").textContent = ""; return; }
   $("#week-meta").textContent = `${W.desde && W.hasta ? `del ${W.desde.slice(8)}/${W.desde.slice(5, 7)} al ${W.hasta.slice(8)}/${W.hasta.slice(5, 7)}` : W.semana || ""}${W.actualizado ? " · " + W.actualizado : ""}`;
   $("#week-cards").innerHTML = VIS().filter(p => W.pares[p]).map(p => {
     const d = W.pares[p], c = Math.max(-5, Math.min(5, Math.round(Number(d.conviccion) || 0))), col = c > 0 ? "var(--up)" : c < 0 ? "var(--down)" : "var(--muted)";
