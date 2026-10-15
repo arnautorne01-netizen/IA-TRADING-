@@ -404,6 +404,12 @@ details summary{cursor:pointer;font-weight:600}
       <h2>Mis operaciones</h2>
       <span class="muted small" id="o-strip"></span>
     </div>
+    <div class="panel" id="mej-panel" hidden>
+      <div class="panel-head"><h3>📋 Cosas que mejorar</h3><span class="small muted" id="mej-count"></span></div>
+      <p class="small muted" style="margin:0">Las va apuntando la IA a partir de tus comentarios en las operaciones. Márcalas cuando ya lo hayas corregido.</p>
+      <ul class="clean" id="mej-list" style="display:flex;flex-direction:column;gap:6px"></ul>
+      <details class="small" id="mej-done-wrap" hidden><summary class="muted">Ya corregidas</summary><ul class="clean" id="mej-done"></ul></details>
+    </div>
     <div class="panel" id="check-panel">
       <div class="panel-head"><h3>Chequeo antes de entrar</h3><span class="small muted">Sube la captura ANTES de abrir la operación</span></div>
       <label class="drop" for="check-file" id="check-drop" style="padding:22px 18px"><b>Suelta aquí la captura de la entrada que estás pensando</b>
@@ -907,6 +913,7 @@ async function boot() {
     state.checks = snap.docs.filter(d => ["check_result", "pending_check"].includes(d.data()?.kind)).map(d => ({id: d.id, ...d.data()})).sort((a, b) => String(b.created).localeCompare(String(a.created)));
     renderChecks();
     const sc = snap.docs.find(d => d.id === "strategy_chat"); if (sc) state.stratChat = sc.data();
+    const mj = snap.docs.find(d => d.id === "improvements"); state.mejoras = mj ? mj.data() : null; renderMejoras();
     state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
     const prof = snap.docs.find(d => d.id === "strategy_profile");
     state.profile = prof ? prof.data() : null;
@@ -1636,6 +1643,7 @@ function checkContext() {
 SESGO SEMANAL (convicción -5..+5): ${semana ? JSON.stringify(Object.fromEntries(Object.entries(semana).map(([k, v]) => [k, v.conviccion]))) : "no disponible"}
 NOTICIAS EN LA PRÓXIMA HORA Y MEDIA: ${news.length ? news.join(" | ") : "ninguna de alto impacto"}
 ESTRUCTURA CON VELAS REALES: ${PAIRS.map(p => mtfText(p) || p + ": sin velas").join(" | ")}
+COSAS QUE EL TRADER TIENE QUE MEJORAR (vigílalas en esta entrada): ${JSON.stringify((state.mejoras?.items || []).filter(i => !i.hecho).map(i => i.texto))}
 OPERACIONES REALES DE HOY: ${hoy.length} (${hoy.filter(t => t.win).length} ganadas, ${hoy.filter(t => t.loss).length} perdidas). Hora actual en Madrid: ${new Date().toLocaleTimeString("es-ES", {timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit"})}.`;
 }
 function checkPrompt() {
@@ -2396,6 +2404,20 @@ function openDeep(t, focusRev = false) {
 }
 const REV_SCHEMA = `{"veredicto":"Bien visto|En parte|No era un error","valoracion":"2-3 frases: si su comentario es correcto, con lo que se ve en el gráfico (precios, horas, velas)","que_debiste_hacer":["2-5 pasos concretos, en orden, de lo que habría sido la ejecución correcta, con precios si se ven"],"leccion":"1 frase para recordar","regla":"una regla corta para su checklist, o null si no hace falta"}`;
 function revCard(r) {
+  if (r.tipo === "comentario") {
+    const A = r.respuesta || {}, ac = A.acciones || {};
+    return `<div class="panel" style="background:var(--bg);gap:6px">
+      <div class="small muted">${esc(new Date(r.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))} · comentario</div>
+      <div><b>Tú:</b> ${esc(r.comentario)}</div>
+      ${r.respuesta ? `<div><b>IA:</b> ${esc(A.respuesta || "")}</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          ${ac.ajustar_puntuacion ? `<span class="pill warn">Nota corregida: ${esc(ac.antes || "?")} → ${esc(ac.nueva_nota || "?")}${ac.nueva_puntuacion != null ? " · " + esc(ac.nueva_puntuacion) + "/100" : ""}</span>` : ""}
+          ${ac.anadir_a_mejorar ? `<span class="pill">📋 Apuntado en «Cosas que mejorar»</span>` : ""}
+          ${!ac.ajustar_puntuacion && !ac.anadir_a_mejorar ? `<span class="pill">Sin cambios</span>` : ""}</div>
+        ${ac.anadir_a_mejorar ? `<div class="small"><b>A mejorar:</b> ${esc(ac.anadir_a_mejorar)}</div>` : ""}`
+      : `<div class="small muted">La IA lo está revisando… (1-3 min)</div>`}
+    </div>`;
+  }
   const R = r.respuesta || {}, v = R.veredicto || "", c = v === "Bien visto" ? "up" : v === "En parte" ? "warn" : v ? "down" : "";
   return `<div class="panel" style="background:var(--bg);gap:6px">
     <div class="small muted">${esc(new Date(r.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))}</div>
@@ -2413,9 +2435,13 @@ function revSection(t) {
   return `<h3 style="margin:8px 0 4px">Tus comentarios sobre esta operación</h3>
     <div style="display:flex;flex-direction:column;gap:8px">${rs.map(revCard).join("")}</div>
     <form id="rev-form" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-      <label class="small" for="rev-txt">¿Crees que cometiste algún error o que se podía hacer mejor? Escríbelo y la IA te dirá si tienes razón y qué deberías haber hecho, paso a paso.</label>
-      <textarea id="rev-txt" rows="3" placeholder="Ej.: creo que entré antes de tiempo, sin esperar al cierre de la vela de M5 / el stop estaba muy ajustado / debí dejar correr hasta el máximo de Asia"></textarea>
-      <div class="row" style="gap:10px"><button type="submit" class="btn primary">Pedir opinión a la IA</button><span class="small muted" id="rev-st" role="status"></span></div>
+      <label class="small" for="rev-txt">Escribe un comentario sobre esta operación: un error, algo que la IA no vio (p. ej. «moví el stop a BE», «había noticia», «el iFVG era de M15») o algo que quieras mejorar.</label>
+      <textarea id="rev-txt" rows="3" placeholder="Ej.: creo que entré antes de tiempo / el stop no era ese, lo moví a breakeven / la zona era de H1, no de M5"></textarea>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button type="submit" class="btn primary" data-mode="accion" title="La IA decide si corrige la puntuación del análisis o lo apunta en «Cosas que mejorar»">Comentar (la IA decide qué hacer)</button>
+        <button type="submit" class="btn" data-mode="opinion">Solo pedir opinión</button>
+        <span class="small muted" id="rev-st" role="status"></span></div>
+      <p class="small muted" style="margin:0"><b>Comentar:</b> la IA puede corregir la nota del análisis a fondo o apuntarlo en «Cosas que mejorar». <b>Solo pedir opinión:</b> te dice si tienes razón y qué deberías haber hecho, sin cambiar nada.</p>
     </form>`;
 }
 function revPrompt(t, comentario) {
@@ -2431,7 +2457,7 @@ COMENTARIO DEL TRADER: «${comentario}»
 Responde SOLO con un objeto JSON con esta forma: ${REV_SCHEMA}`;
 }
 async function runReview(t, comentario) {
-  const st = $("#rev-st"), btn = $("#rev-form button");
+  const st = $("#rev-st"), btn = {set disabled(v) { $("#rev-form").querySelectorAll("button").forEach(b => b.disabled = v); }};
   btn.disabled = true; st.textContent = "La IA está revisando tu comentario…";
   const entry = {comentario, at: new Date().toISOString()};
   const save = async revs => { t.revisiones = revs; if (col) { try { await col.doc(t.id).update({revisiones: revs}); } catch {} } $("#rev-box").innerHTML = revSection(t); };
@@ -2456,7 +2482,90 @@ async function runReview(t, comentario) {
 document.addEventListener("submit", e => {
   if (e.target.id !== "rev-form") return; e.preventDefault();
   const txt = $("#rev-txt").value.trim(); if (!txt) { $("#rev-txt").focus(); return; }
-  const t = (state.allTrades || state.trades).find(x => x.id === $("#rev-box").dataset.trade); if (t) runReview(t, txt);
+  const t = (state.allTrades || state.trades).find(x => x.id === $("#rev-box").dataset.trade); if (!t) return;
+  if (e.submitter?.dataset.mode === "opinion") runReview(t, txt); else runAction(t, txt);
+});
+const ACT_SCHEMA = `{"respuesta":"1-3 frases para el trader: qué has decidido hacer y por qué","acciones":{"ajustar_puntuacion":true|false,"nueva_nota":"A+|A|A-|B|C|D|null","nueva_puntuacion":0-100|null,"pasos_corregidos":[{"paso":"nombre exacto del paso del análisis a fondo","valoracion":"bien|mejorable|mal","nota":0-10,"lectura":"lectura corregida"}],"motivo_ajuste":"por qué cambia la nota, o null","anadir_a_mejorar":"una mejora concreta y accionable para su lista, o null","categoria":"Entrada|Stop|Objetivo|Gestión|Timing|Análisis|Psicología|null"}}`;
+function actPrompt(t, comentario) {
+  const D = t.deep_analysis;
+  return `${COACH}
+El trader tiene TDAH: sé claro y breve.
+El trader ha escrito un COMENTARIO sobre una operación ya hecha. No te pide opinión: tú decides qué hacer con él, con criterio de mentor honesto:
+- AJUSTAR LA PUNTUACIÓN del análisis a fondo (solo si existe) cuando el comentario aporte un dato que cambia la valoración del PROCESO: algo que no se veía en la captura o que se leyó mal (p. ej. movió el stop a breakeven, la zona era de otra temporalidad, había una confirmación en otra temporalidad, había noticia). Corrige solo los pasos afectados y recalcula nota y puntuación de forma coherente. Si el comentario revela un error que el análisis no vio, la nota también puede BAJAR. No subas la nota por complacerle: si el comentario no cambia nada del proceso, no la toques.
+- APUNTAR EN «COSAS QUE MEJORAR» cuando el comentario revele un error o hábito que debe corregir (o lo reconozca él mismo): escribe una mejora concreta y accionable en una frase («Esperar el cierre de la vela de M5 antes de entrar»), no genérica. No repitas una que ya esté en su lista.
+- Puedes hacer las dos cosas, una o ninguna (si es solo una nota sin efecto, dilo).
+Mira las capturas (zona NARANJA = stop loss, zona AZUL = take profit, línea entre ambas = entrada) para comprobar lo que dice.
+OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences})}
+ANÁLISIS A FONDO ACTUAL: ${D ? JSON.stringify({nota: D.nota, puntuacion: D.puntuacion, pasos: (D.pasos || []).map(p => ({paso: p.paso, valoracion: p.valoracion, nota: p.nota}))}) : "NO EXISTE (ajustar_puntuacion debe ser false)"}
+SU LISTA ACTUAL DE COSAS QUE MEJORAR: ${JSON.stringify((state.mejoras?.items || []).filter(i => !i.hecho).map(i => i.texto))}
+COMENTARIO DEL TRADER: «${comentario}»
+Responde SOLO con un objeto JSON con esta forma: ${ACT_SCHEMA}`;
+}
+async function applyActions(t, entry, A) {
+  const ac = A.acciones || (A.acciones = {}), D = t.deep_analysis, upd = {};
+  if (ac.ajustar_puntuacion && D) {
+    ac.antes = `${D.nota || "?"}${D.puntuacion != null ? " · " + D.puntuacion + "/100" : ""}`;
+    const pasos = (D.pasos || []).map(p => { const c = (ac.pasos_corregidos || []).find(x => x.paso === p.paso); return c ? {...p, ...c} : p; });
+    upd.deep_analysis = {...D, pasos, nota: ac.nueva_nota || D.nota, puntuacion: ac.nueva_puntuacion ?? D.puntuacion,
+      ajustes: [...(D.ajustes || []), {at: entry.at, comentario: entry.comentario, de: {nota: D.nota, puntuacion: D.puntuacion}, a: {nota: ac.nueva_nota || D.nota, puntuacion: ac.nueva_puntuacion ?? D.puntuacion}, motivo: ac.motivo_ajuste || ""}]};
+    t.deep_analysis = upd.deep_analysis;
+  } else ac.ajustar_puntuacion = false;
+  if (ac.anadir_a_mejorar) {
+    const M = state.mejoras || {items: []};
+    if (!M.items.some(i => !i.hecho && i.texto.toLowerCase() === ac.anadir_a_mejorar.toLowerCase())) {
+      const items = [...M.items, {texto: ac.anadir_a_mejorar, categoria: ac.categoria || "", trade_id: t.id, fecha: t.date, par: t.pair, at: entry.at, hecho: false}].slice(-60);
+      await saveMejoras({kind: "improvements", items});
+    }
+  }
+  t.revisiones = [...(t.revisiones || []), {...entry, respuesta: A}];
+  upd.revisiones = t.revisiones;
+  if (col) { try { await col.doc(t.id).update(upd); } catch {} }
+}
+async function runAction(t, comentario) {
+  const st = $("#rev-st"); $("#rev-form").querySelectorAll("button").forEach(b => b.disabled = true);
+  st.textContent = "La IA está decidiendo qué hacer con tu comentario…";
+  const entry = {tipo: "comentario", comentario, at: new Date().toISOString()};
+  try {
+    if (!state.sample) throw {code: "sampling_disabled"};
+    const blobs = []; if (state.imgLimit !== 0) for (const id of (t.shots || []).slice(0, state.imgLimit || 5)) { const b = await fetchBlob(id); if (b) blobs.push(b); }
+    const A = await state.sample.json(actPrompt(t, comentario), {images: blobs.length ? blobs : undefined, modelTier: "complex"});
+    if (!A?.respuesta) throw {code: "invalid_json"};
+    await applyActions(t, entry, A);
+    openDeep(t, false); $("#rev-box").scrollIntoView({block: "start"});
+  } catch (e) {
+    if (["sampling_disabled", "not_declared", "images_unavailable"].includes(e.code) && col) {
+      try {
+        t.revisiones = [...(t.revisiones || []), entry];
+        await col.doc(t.id).update({revisiones: t.revisiones});
+        await col.doc("pending_review_" + t.id + "_" + Date.now().toString(36)).set({kind: "pending_review", tipo: "comentario", trade_id: t.id, comentario, at: entry.at, created: entry.at});
+        const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha dejado un COMENTARIO en una operación para que decidas qué hacer: hazlo lo primero."}); } catch {} }
+        $("#rev-box").innerHTML = revSection(t); $("#rev-st").textContent = "Comentario enviado: la IA decidirá qué hacer en 1-3 minutos."; return;
+      } catch {}
+    }
+    $("#rev-form").querySelectorAll("button").forEach(b => b.disabled = false);
+    st.textContent = e.code === "invalid_json" ? "No pude procesar el comentario; prueba otra vez." : AI_ERR[e.code] || "No se pudo: " + (e.message || e.code);
+  }
+}
+async function saveMejoras(M) { state.mejoras = M; renderMejoras(); if (col) { try { await col.doc("improvements").set(M); } catch {} } }
+function renderMejoras() {
+  const items = state.mejoras?.items || [], open = items.map((x, i) => ({...x, i})).filter(x => !x.hecho), done = items.map((x, i) => ({...x, i})).filter(x => x.hecho);
+  const p = $("#mej-panel"); if (!p) return;
+  p.hidden = !items.length;
+  $("#mej-count").textContent = open.length ? `${open.length} pendiente${open.length === 1 ? "" : "s"}` : "Todo corregido 👏";
+  const row = x => `<li class="row" style="gap:8px;align-items:flex-start"><input type="checkbox" data-mej="${x.i}" ${x.hecho ? "checked" : ""} aria-label="Marcar como corregido" style="margin-top:3px">
+    <span style="flex:1">${x.categoria ? `<span class="pill">${esc(x.categoria)}</span> ` : ""}${esc(x.texto)} <span class="small muted">${x.trade_id ? `· <a href="#" data-rev-open="${esc(x.trade_id)}">${esc(x.par || "")} ${esc(x.fecha || "")}</a>` : ""}</span></span>
+    <button type="button" class="btn small" data-mej-del="${x.i}" aria-label="Borrar">×</button></li>`;
+  $("#mej-list").innerHTML = open.map(row).join("") || `<li class="small muted">Nada pendiente.</li>`;
+  $("#mej-done-wrap").hidden = !done.length; $("#mej-done").innerHTML = done.map(row).join("");
+}
+document.addEventListener("change", e => {
+  const c = e.target.closest("[data-mej]"); if (!c) return;
+  const M = state.mejoras; if (!M) return;
+  saveMejoras({...M, items: M.items.map((x, i) => i === +c.dataset.mej ? {...x, hecho: c.checked, hecho_at: c.checked ? new Date().toISOString() : null} : x)});
+});
+document.addEventListener("click", e => {
+  const d = e.target.closest("[data-mej-del]"); if (!d) return;
+  const M = state.mejoras; if (M) saveMejoras({...M, items: M.items.filter((_, i) => i !== +d.dataset.mejDel)});
 });
 function closeDeep() { $("#deep-modal").hidden = true; document.body.style.overflow = ""; }
 $("#deep-close").addEventListener("click", closeDeep);
@@ -2487,7 +2596,7 @@ async function runDeep(t, btn) {
 }
 document.addEventListener("click", e => {
   const o = e.target.closest("[data-deep-open]"); if (o) { const t = state.trades.find(x => x.id === o.dataset.deepOpen); if (t) openDeep(t); return; }
-  const rv = e.target.closest("[data-rev-open]"); if (rv) { const t = (state.allTrades || state.trades).find(x => x.id === rv.dataset.revOpen); if (t) openDeep(t, true); return; }
+  const rv = e.target.closest("[data-rev-open]"); if (rv) { e.preventDefault(); const t = (state.allTrades || state.trades).find(x => x.id === rv.dataset.revOpen); if (t) openDeep(t, true); return; }
   const r = e.target.closest("[data-deep-run]"); if (r) { const t = state.trades.find(x => x.id === r.dataset.deepRun); if (t) runDeep(t, r); }
 });
 
