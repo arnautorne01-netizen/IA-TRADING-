@@ -2407,13 +2407,13 @@ function revCard(r) {
   if (r.tipo === "comentario") {
     const A = r.respuesta || {}, ac = A.acciones || {};
     return `<div class="panel" style="background:var(--bg);gap:6px">
-      <div class="small muted">${esc(new Date(r.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))} · comentario</div>
+      <div class="small muted">${esc(new Date(r.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))} · ${r.respuesta?.tipo_mensaje === "pregunta" ? "pregunta" : "comentario"}</div>
       <div><b>Tú:</b> ${esc(r.comentario)}</div>
-      ${r.respuesta ? `<div><b>IA:</b> ${esc(A.respuesta || "")}</div>
+      ${r.respuesta ? `<div><b>IA:</b> ${mdLite(A.respuesta || "").replace(/\n/g, "<br>")}</div>
         <div class="row" style="gap:6px;flex-wrap:wrap">
           ${ac.ajustar_puntuacion ? `<span class="pill warn">Nota corregida: ${esc(ac.antes || "?")} → ${esc(ac.nueva_nota || "?")}${ac.nueva_puntuacion != null ? " · " + esc(ac.nueva_puntuacion) + "/100" : ""}</span>` : ""}
           ${ac.anadir_a_mejorar ? `<span class="pill">📋 Apuntado en «Cosas que mejorar»</span>` : ""}
-          ${!ac.ajustar_puntuacion && !ac.anadir_a_mejorar ? `<span class="pill">Sin cambios</span>` : ""}</div>
+          ${!ac.ajustar_puntuacion && !ac.anadir_a_mejorar && A.tipo_mensaje !== "pregunta" ? `<span class="pill">Sin cambios</span>` : ""}</div>
         ${ac.anadir_a_mejorar ? `<div class="small"><b>A mejorar:</b> ${esc(ac.anadir_a_mejorar)}</div>` : ""}`
       : `<div class="small muted">La IA lo está revisando… (1-3 min)</div>`}
     </div>`;
@@ -2435,13 +2435,13 @@ function revSection(t) {
   return `<h3 style="margin:8px 0 4px">Tus comentarios sobre esta operación</h3>
     <div style="display:flex;flex-direction:column;gap:8px">${rs.map(revCard).join("")}</div>
     <form id="rev-form" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
-      <label class="small" for="rev-txt">Escribe un comentario sobre esta operación: un error, algo que la IA no vio (p. ej. «moví el stop a BE», «había noticia», «el iFVG era de M15») o algo que quieras mejorar.</label>
+      <label class="small" for="rev-txt">Escribe lo que quieras sobre esta operación: una pregunta («¿dónde tendría que haber puesto el stop?», «¿esto era un iFVG?»), un dato que la IA no vio («moví el stop a BE», «había noticia») o algo que quieras mejorar.</label>
       <textarea id="rev-txt" rows="3" placeholder="Ej.: creo que entré antes de tiempo / el stop no era ese, lo moví a breakeven / la zona era de H1, no de M5"></textarea>
       <div class="row" style="gap:8px;flex-wrap:wrap">
-        <button type="submit" class="btn primary" data-mode="accion" title="La IA decide si corrige la puntuación del análisis o lo apunta en «Cosas que mejorar»">Comentar (la IA decide qué hacer)</button>
+        <button type="submit" class="btn primary" data-mode="accion" title="Te responde y, si hace falta, corrige la nota del análisis o lo apunta en «Cosas que mejorar»">Enviar a la IA</button>
         <button type="submit" class="btn" data-mode="opinion">Solo pedir opinión</button>
         <span class="small muted" id="rev-st" role="status"></span></div>
-      <p class="small muted" style="margin:0"><b>Comentar:</b> la IA puede corregir la nota del análisis a fondo o apuntarlo en «Cosas que mejorar». <b>Solo pedir opinión:</b> te dice si tienes razón y qué deberías haber hecho, sin cambiar nada.</p>
+      <p class="small muted" style="margin:0"><b>Enviar a la IA:</b> te contesta lo que preguntes y, si hace falta, corrige la nota del análisis a fondo o lo apunta en «Cosas que mejorar». <b>Solo pedir opinión:</b> te dice si tu comentario es correcto y qué deberías haber hecho, sin cambiar nada.</p>
     </form>`;
 }
 function revPrompt(t, comentario) {
@@ -2485,12 +2485,14 @@ document.addEventListener("submit", e => {
   const t = (state.allTrades || state.trades).find(x => x.id === $("#rev-box").dataset.trade); if (!t) return;
   if (e.submitter?.dataset.mode === "opinion") runReview(t, txt); else runAction(t, txt);
 });
-const ACT_SCHEMA = `{"respuesta":"1-3 frases para el trader: qué has decidido hacer y por qué","acciones":{"ajustar_puntuacion":true|false,"nueva_nota":"A+|A|A-|B|C|D|null","nueva_puntuacion":0-100|null,"pasos_corregidos":[{"paso":"nombre exacto del paso del análisis a fondo","valoracion":"bien|mejorable|mal","nota":0-10,"lectura":"lectura corregida"}],"motivo_ajuste":"por qué cambia la nota, o null","anadir_a_mejorar":"una mejora concreta y accionable para su lista, o null","categoria":"Entrada|Stop|Objetivo|Gestión|Timing|Análisis|Psicología|null"}}`;
+const ACT_SCHEMA = `{"respuesta":"tu respuesta al trader: si te pregunta algo, contéstalo bien (hasta 10 líneas, con pasos o viñetas si ayuda, puedes usar **negritas** y saltos de línea); si es un comentario, di qué has decidido hacer y por qué","tipo_mensaje":"pregunta|comentario|ambos","acciones":{"ajustar_puntuacion":true|false,"nueva_nota":"A+|A|A-|B|C|D|null","nueva_puntuacion":0-100|null,"pasos_corregidos":[{"paso":"nombre exacto del paso del análisis a fondo","valoracion":"bien|mejorable|mal","nota":0-10,"lectura":"lectura corregida"}],"motivo_ajuste":"por qué cambia la nota, o null","anadir_a_mejorar":"una mejora concreta y accionable para su lista, o null","categoria":"Entrada|Stop|Objetivo|Gestión|Timing|Análisis|Psicología|null"}}`;
 function actPrompt(t, comentario) {
   const D = t.deep_analysis;
   return `${COACH}
 El trader tiene TDAH: sé claro y breve.
-El trader ha escrito un COMENTARIO sobre una operación ya hecha. No te pide opinión: tú decides qué hacer con él, con criterio de mentor honesto:
+El trader ha escrito un MENSAJE sobre una operación ya hecha. Puede ser una PREGUNTA (sobre esta operación, su estrategia, un concepto como iFVG, BOS u order block, la gestión, el riesgo, qué haría un profesional…), un COMENTARIO (un dato, un error, algo que no se vio) o las dos cosas. Sé flexible: entiende lo que quiere aunque lo escriba de forma informal o con faltas.
+- Si PREGUNTA algo, contéstalo siempre de forma directa y útil en "respuesta", usando las capturas, los datos de la operación, su estrategia y la conversación anterior. Si no se puede saber con lo que hay, dilo y explica qué haría falta.
+- Además, decide con criterio de mentor honesto si hay que hacer algo:
 - AJUSTAR LA PUNTUACIÓN del análisis a fondo (solo si existe) cuando el comentario aporte un dato que cambia la valoración del PROCESO: algo que no se veía en la captura o que se leyó mal (p. ej. movió el stop a breakeven, la zona era de otra temporalidad, había una confirmación en otra temporalidad, había noticia). Corrige solo los pasos afectados y recalcula nota y puntuación de forma coherente. Si el comentario revela un error que el análisis no vio, la nota también puede BAJAR. No subas la nota por complacerle: si el comentario no cambia nada del proceso, no la toques.
 - APUNTAR EN «COSAS QUE MEJORAR» cuando el comentario revele un error o hábito que debe corregir (o lo reconozca él mismo): escribe una mejora concreta y accionable en una frase («Esperar el cierre de la vela de M5 antes de entrar»), no genérica. No repitas una que ya esté en su lista.
 - Puedes hacer las dos cosas, una o ninguna (si es solo una nota sin efecto, dilo).
@@ -2498,7 +2500,9 @@ Mira las capturas (zona NARANJA = stop loss, zona AZUL = take profit, línea ent
 OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences})}
 ANÁLISIS A FONDO ACTUAL: ${D ? JSON.stringify({nota: D.nota, puntuacion: D.puntuacion, pasos: (D.pasos || []).map(p => ({paso: p.paso, valoracion: p.valoracion, nota: p.nota}))}) : "NO EXISTE (ajustar_puntuacion debe ser false)"}
 SU LISTA ACTUAL DE COSAS QUE MEJORAR: ${JSON.stringify((state.mejoras?.items || []).filter(i => !i.hecho).map(i => i.texto))}
-COMENTARIO DEL TRADER: «${comentario}»
+ESTRATEGIA DEL TRADER: ${JSON.stringify((p => p ? {nombre: p.nombre, pasos: p.pasos, checklist: p.checklist, reglas: p.reglas} : {})(activeProfile()))}
+${(t.revisiones || []).filter(r => r.respuesta).length ? "CONVERSACIÓN ANTERIOR SOBRE ESTA OPERACIÓN: " + JSON.stringify(t.revisiones.filter(r => r.respuesta).slice(-6).map(r => ({trader: r.comentario, ia: r.respuesta.respuesta || r.respuesta.valoracion}))) : ""}
+MENSAJE DEL TRADER: «${comentario}»
 Responde SOLO con un objeto JSON con esta forma: ${ACT_SCHEMA}`;
 }
 async function applyActions(t, entry, A) {
@@ -2523,7 +2527,7 @@ async function applyActions(t, entry, A) {
 }
 async function runAction(t, comentario) {
   const st = $("#rev-st"); $("#rev-form").querySelectorAll("button").forEach(b => b.disabled = true);
-  st.textContent = "La IA está decidiendo qué hacer con tu comentario…";
+  st.textContent = "La IA está pensando…";
   const entry = {tipo: "comentario", comentario, at: new Date().toISOString()};
   try {
     if (!state.sample) throw {code: "sampling_disabled"};
