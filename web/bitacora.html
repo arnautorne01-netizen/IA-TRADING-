@@ -309,6 +309,19 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div id="j-example" class="banner info" hidden></div>
     <div class="kpis" id="j-kpis"></div>
+    <div class="panel" id="sim-panel">
+      <div class="panel-head"><h3>¿Y si hubieras cerrado en otro objetivo?</h3><span class="muted small" id="sim-n"></span></div>
+      <p class="small muted" style="margin:0">Con el recorrido máximo a favor que hizo el precio en cada operación antes de tocar tu stop, calcula qué win rate y qué resultado habrías tenido cerrando siempre en el mismo R:R.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <span class="small">Objetivos:</span>
+        <label class="small row" style="gap:4px">Añadir 1:<input id="sim-custom" type="number" step="0.1" min="0.1" max="10" style="width:5em" placeholder="2"></label>
+        <button type="button" class="btn small" id="sim-add">Añadir</button>
+      </div>
+      <div class="tablebox"><table id="sim-table"></table></div>
+      <p class="small" id="sim-best" style="margin:0"></p>
+      <div class="row" style="gap:10px;flex-wrap:wrap"><button type="button" class="btn" id="sim-ai" hidden></button><span class="small muted" id="sim-st" role="status"></span></div>
+      <details class="small"><summary class="muted">Cómo se calcula</summary><p style="margin:4px 0 0">Para cada operación se usa cuántos R llegó a ir el precio a favor antes de tocar el stop (lo mide la IA mirando tus capturas). Si llegó al objetivo, cuenta como ganada (+objetivo R); si no, como perdida (−1R). Las ganadoras sin medir cuentan con el R que consiguieron como mínimo; las perdedoras sin medir no se usan. Es una simulación con lo que se ve en las capturas: no tiene en cuenta comisiones ni deslizamiento.</p></details>
+    </div>
     <div class="panel">
       <div class="panel-head"><h3>Curva de capital</h3><span class="muted small">R acumulado operación a operación</span></div>
       <div id="j-equity"></div>
@@ -731,6 +744,7 @@ function normalize(raw) {
   t.deep_analysis = raw.deep_analysis && typeof raw.deep_analysis === "object" ? raw.deep_analysis : null;
   t.cuenta = /^back/i.test(String(raw.cuenta || "")) ? "Backtest" : "Real";
   t.fecha_estimada = !!raw.fecha_estimada;
+  t.mfe_r = num(raw.mfe_r); t.mfe_nota = raw.mfe_nota ? String(raw.mfe_nota) : "";
   return t;
 }
 // Campos derivados para el análisis
@@ -1036,9 +1050,58 @@ function equitySVG(ts) {
 // =====================================================================
 // Journal
 // =====================================================================
+let SIM_TARGETS = [0.8, 1, 1.5];
+try { const s = JSON.parse(localStorage.getItem("simTargets") || "null"); if (Array.isArray(s) && s.length) SIM_TARGETS = s; } catch {}
+function mfeOf(t) { return t.mfe_r != null ? t.mfe_r : (t.win && t.r != null ? t.r : null); }
+function renderSim(ts) {
+  const closed = ts.filter(t => t.win || t.loss || t.mfe_r != null);
+  const usable = closed.filter(t => mfeOf(t) != null), missing = closed.filter(t => t.mfe_r == null && t.shots?.length);
+  const fmt = v => Math.abs(v) < 0.005 ? "0,00" : (v > 0 ? "+" : "") + v.toFixed(2).replace(".", ",");
+  $("#sim-n").textContent = usable.length ? `${usable.length} de ${closed.length} operaciones con recorrido medido` : "";
+  const realWR = closed.filter(t => t.win || t.loss).length ? Math.round(100 * closed.filter(t => t.win).length / closed.filter(t => t.win || t.loss).length) : null;
+  const rows = [...SIM_TARGETS].sort((a, b) => a - b).map(T => {
+    const w = usable.filter(t => mfeOf(t) >= T).length, n = usable.length, wr = n ? w / n : 0, exp = wr * T - (1 - wr);
+    return {T, w, n, wr, exp, tot: w * T - (n - w)};
+  });
+  $("#sim-table").innerHTML = usable.length ? `<thead><tr><th>Objetivo</th><th>Ganadas</th><th>Win rate</th><th>Resultado medio por operación</th><th>Total</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><b>1:${String(r.T).replace(".", ",")}</b></td><td class="num">${r.w} / ${r.n}</td><td class="num"><b>${Math.round(r.wr * 100)}%</b></td><td class="num ${cls(r.exp)}">${fmt(r.exp)}R</td><td class="num ${cls(r.tot)}">${fmt(r.tot)}R</td><td><button type="button" class="btn small" data-sim-del="${r.T}" aria-label="Quitar 1:${r.T}">×</button></td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="muted">Aún no hay operaciones con el recorrido medido. Pulsa el botón de abajo para que la IA lo mida en tus capturas.</td></tr></tbody>`;
+  const best = rows.filter(r => r.n).sort((a, b) => b.exp - a.exp)[0];
+  $("#sim-best").innerHTML = best ? `Con estos datos, el objetivo que más te habría dado es <b>1:${String(best.T).replace(".", ",")}</b> (${Math.round(best.wr * 100)}% de acierto, ${fmt(best.exp)}R de media por operación)${realWR != null ? `. Tu win rate real es ${realWR}%` : ""}.${usable.length < 20 ? ` <span class="muted">Ojo: con ${usable.length} operaciones es solo orientativo.</span>` : ""}` : "";
+  const btn = $("#sim-ai"); btn.hidden = !missing.length || !state.sample && !col;
+  btn.textContent = `Medir con IA el recorrido de ${missing.length} ${missing.length === 1 ? "operación" : "operaciones"} sin medir`;
+  btn.onclick = () => measureMfe(missing);
+}
+const MFE_PROMPT = t => `Mira la captura de esta operación de trading (herramienta de posición de TradingView: zona NARANJA = stop loss, zona AZUL = take profit, la línea entre las dos = entrada). Datos registrados: ${JSON.stringify({instrumento: t.pair, direccion: t.direction, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, resultado: t.result, r: t.r})}.
+Mide el RECORRIDO MÁXIMO A FAVOR (MFE) en R: cuánto llegó a ir el precio a favor de la operación (incluidas las mechas) después de la entrada y ANTES de tocar el stop; si no tocó el stop, hasta el final de lo que se ve. 1R = distancia entre la entrada y el stop. Ejemplo: entrada 1.3200, stop 1.3180 (20 pips = 1R), el precio subió hasta 1.3236 antes de bajar al stop → 1.8R. Si la operación ganó, es como mínimo el R conseguido. Lee los precios del eje derecho. Si no se puede saber, pon null.
+Responde SOLO con JSON: {"mfe_r": número con 2 decimales o null, "toco_stop": true|false|null, "nota": "1 frase: hasta qué precio llegó y cuándo"}`;
+async function measureMfe(list) {
+  const st = $("#sim-st"), btn = $("#sim-ai"); btn.disabled = true;
+  let done = 0, queued = 0;
+  for (const t of list) {
+    st.textContent = `Midiendo ${done + queued + 1} de ${list.length}…`;
+    try {
+      if (!state.sample || state.imgLimit === 0) throw {code: "images_unavailable"};
+      const blobs = []; for (const id of t.shots.slice(0, Math.min(3, state.imgLimit || 3))) { const b = await fetchBlob(id); if (b) blobs.push(b); }
+      if (!blobs.length) continue;
+      const r = await state.sample.json(MFE_PROMPT(t), {images: blobs, modelTier: "complex"});
+      const v = num(r?.mfe_r);
+      if (v != null) { t.mfe_r = v; t.mfe_nota = r.nota || ""; if (col) await col.doc(t.id).update({mfe_r: v, mfe_nota: r.nota || ""}); done++; }
+    } catch (e) {
+      if (["images_unavailable", "sampling_disabled", "not_declared"].includes(e.code) && col) {
+        try { await col.doc("pending_mfe_" + t.id).set({kind: "pending_mfe", trade_id: t.id, created: new Date().toISOString()}); queued++; } catch {}
+      }
+    }
+  }
+  if (queued) { const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader quiere simular su win rate con otros objetivos: mide el recorrido máximo a favor (MFE) de las operaciones pendientes."}); } catch {} } }
+  st.textContent = `${done ? done + " medidas." : ""}${queued ? ` ${queued} enviadas a la IA en segundo plano: aparecerán en unos minutos.` : ""}` || "No se pudo medir ninguna.";
+  btn.disabled = false; renderAll();
+}
+$("#sim-add").addEventListener("click", () => { const v = num($("#sim-custom").value); if (v == null || v <= 0 || v > 10) return; if (!SIM_TARGETS.includes(v)) SIM_TARGETS.push(v); try { localStorage.setItem("simTargets", JSON.stringify(SIM_TARGETS)); } catch {} $("#sim-custom").value = ""; renderAll(); });
+document.addEventListener("click", e => { const d = e.target.closest("[data-sim-del]"); if (!d) return; SIM_TARGETS = SIM_TARGETS.filter(x => x !== +d.dataset.simDel); try { localStorage.setItem("simTargets", JSON.stringify(SIM_TARGETS)); } catch {} renderAll(); });
 function renderJournal() {
   const pair = $("#j-pair").value;
   const ts = state.trades.filter(t => !pair || t.pair === pair);
+  renderSim(ts);
   const ex = state.trades.filter(t => t.ejemplo).length;
   $("#j-example").hidden = !(ex || (state.loaded && !state.trades.length));
   $("#j-example").innerHTML = !state.trades.length ? `Todavía no hay operaciones. Tu win rate y tus estadísticas se calculan con lo que registres en <button class="btn" data-goto="operaciones">Mis operaciones</button>`
@@ -2196,7 +2259,7 @@ Estructura actual del mercado: ${PAIRS.map(p => `${mtfText(p) || p + ": sin vela
 ${CUENTA_RULE()}
 Responde SOLO con un objeto JSON. Usa null en lo que no se vea con claridad; no inventes precios:
 {"operaciones":[{"imagenes":[1,2],"cuenta":"Real|Backtest","fecha_estimada":true|false,"date":"AAAA-MM-DD o null","time":"HH:MM o null","pair":"EURUSD|GBPUSD|DXY|NAS100|SPX500","direction":"Long|Short","timeframe":"M1|M5|M15|M30|H1|H4|null","session":"sesión válida o null",
-"entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,
+"entry":número o null,"stop_loss":número o null,"take_profit":número o null,"exit_price":número o null,"result":"Win|Loss|BE|null","r":número de R conseguido o null,"mfe_r":recorrido máximo A FAVOR en R (1R = distancia entrada-stop) que hizo el precio después de la entrada y ANTES de tocar el stop (o hasta el final de la captura), con 2 decimales, o null si no se ve,
 "setup":"nombre corto del modelo de entrada","confluences":["..."],"volume":"Alto|Normal|Bajo|null",
 "analisis":"5-8 frases: qué se ve, por qué es (o no) una buena entrada, cómo está colocado el riesgo, qué se hizo bien y qué mejorarías",
 "estrategia":"2-3 frases: qué tipo de operativa refleja",
@@ -2239,7 +2302,7 @@ async function autoFromImages(list) {
           session: SESSIONS.includes(op.session) ? op.session : sessionFromMadridHour(time ? +time.slice(0, 2) : NaN),
           daily_bias: biasFromBriefing(date, pair), entry: op.entry, stop_loss: op.stop_loss, take_profit: op.take_profit, exit_price: op.exit_price,
           r: op.exit_price == null ? (num(op.r) ?? null) : null, result: op.result || null,
-          setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"), deep_analysis: op.analisis_profundo?.pasos ? op.analisis_profundo : null,
+          mfe_r: num(op.mfe_r), setup: op.setup || "", confluences: confs, volume: op.volume || "", shots, ai_analysis: [op.analisis, op.estrategia].filter(Boolean).join("\n\n"), deep_analysis: op.analisis_profundo?.pasos ? op.analisis_profundo : null,
           notes: `Creada automáticamente desde ${idx.length === 1 ? "una captura" : idx.length + " capturas"}${op.date ? "" : " (fecha no visible: puesta la de hoy, corrígela)"}`};
         const id = await saveTrade(raw);
         const t = enrich(normalize(raw));
