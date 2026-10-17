@@ -112,6 +112,10 @@ python -m futbol_ai.cli partido "Real Madrid" "Barcelona" --liga SP1 --todo
 python -m futbol_ai.cli backtest --liga SP1           # ¿cuánto fiarse? (temporadas pasadas)
 ```
 
+**Versión web:** `web/futbol.html`, publicada en claude.ai: https://claude.ai/artifact/S38dmXcWVD4tUSPujUteeR
+El modelo corre en el navegador con 5 temporadas incrustadas; sube `fixtures.csv` y el CSV de la temporada en curso
+de football-data.co.uk para pronosticar la jornada real. El botón «Explícamelo con IA» usa tu cuenta de Claude.
+
 ### Qué te da en cada partido
 
 - **Goles, goles en la 1ª parte, córners y tarjetas esperados** de cada equipo y los marcadores más probables.
