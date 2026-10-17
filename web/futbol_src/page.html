@@ -1,0 +1,739 @@
+<title>Pronósticos de Fútbol IA</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: hoja de apuestas de una columna — barra de ajustes, jornada editable, combinada y una ficha por partido */
+:root {
+  --bg: #eef2ee; --surface: #ffffff; --sunk: #f6f8f5; --ink: #13201a; --mute: #5a6a61; --line: #d9e1db;
+  --pitch: #1b6a45; --pitch-soft: #e1efe6; --amber: #a8620c; --amber-soft: #fbf0df; --risk: #b42318;
+  --bar: #2f8a5d; --bar-bg: #e5ebe6;
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
+  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
+  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
+  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
+  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+.wrap, .wrap > section, .panel, .mhead, .mbody, #matches { grid-template-columns: minmax(0, 1fr); }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1060px; margin: 0 auto; padding-block: 20px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 700; letter-spacing: .01em; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 5vw, 42px); line-height: 1; text-transform: uppercase; }
+h2 { font-size: 22px; text-transform: uppercase; }
+h3 { font-size: 16px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); font-weight: 600; }
+p { margin: 0; }
+.mute { color: var(--mute); }
+.small { font-size: 13px; }
+.num { font-family: var(--f-data); font-variant-numeric: tabular-nums; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header.top .lede { max-width: 62ch; color: var(--mute); margin-top: 6px; }
+.status { font-size: 13px; color: var(--mute); display: flex; gap: 6px 14px; flex-wrap: wrap; }
+.status b { color: var(--ink); font-weight: 600; }
+
+nav.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav.tabs button { font: 600 15px var(--f-display); letter-spacing: .06em; text-transform: uppercase; background: none; border: 0;
+  color: var(--mute); padding: 10px 14px; border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: var(--pitch); border-bottom-color: var(--pitch); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 18px; align-items: end; }
+label.f { display: grid; gap: 4px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--mute); min-width: 0; }
+label.f output { font-family: var(--f-data); color: var(--ink); font-weight: 500; letter-spacing: 0; text-transform: none; }
+select, input[type="number"], input[type="text"] { font: 15px var(--f-body); color: var(--ink); background: var(--sunk); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px; width: 100%; min-width: 0; }
+input[type="range"] { width: 100%; accent-color: var(--pitch); }
+button.btn, label.btn { font: 600 14px var(--f-body); border-radius: 6px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--pitch);
+  background: var(--pitch); color: var(--surface); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+button.ghost, label.ghost { background: transparent; color: var(--pitch); }
+button.link { background: none; border: 0; color: var(--mute); cursor: pointer; font: 13px var(--f-body); padding: 4px; text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--pitch); outline-offset: 2px; }
+input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.addrow { display: grid; grid-template-columns: 1.1fr 1.4fr 1.4fr repeat(3, .6fr) auto; gap: 8px; align-items: end; }
+.addrow .odds-lbl { grid-column: 4 / span 3; }
+@media (max-width: 760px) { .addrow { grid-template-columns: 1fr 1fr; } .addrow > :first-child { grid-column: 1 / -1; } .addrow .odds { grid-column: span 1; } .addrow button { grid-column: 1 / -1; justify-content: center; } }
+.fixtures { display: grid; gap: 6px; }
+.fx { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--sunk); border-radius: 6px; font-size: 14px; flex-wrap: wrap; }
+.fx .lg { font: 600 12px var(--f-data); color: var(--mute); width: 34px; }
+.fx .teams { flex: 1; min-width: 160px; font-weight: 500; }
+.fx .odds { font-family: var(--f-data); font-size: 12px; color: var(--mute); }
+.tag { font: 600 11px var(--f-body); letter-spacing: .05em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); }
+.tag.ok { background: var(--pitch-soft); color: var(--pitch); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.note { font-size: 13px; color: var(--mute); }
+.msg { font-size: 13px; padding: 8px 10px; border-radius: 6px; background: var(--pitch-soft); color: var(--pitch); }
+.msg.err { background: var(--amber-soft); color: var(--amber); }
+
+/* combinada como boleto */
+.slip { border: 1px dashed var(--pitch); background: var(--pitch-soft); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; }
+.slip-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline; }
+.slip-legs { display: grid; gap: 4px; font-size: 14px; }
+.slip-legs div { display: flex; justify-content: space-between; gap: 12px; }
+.big { font: 700 28px var(--f-display); line-height: 1; }
+
+/* ficha de partido */
+.match { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; min-width: 0; }
+.mhead { padding: 14px 16px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.mtitle { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.mtitle h2 { font-size: 26px; text-transform: none; }
+.mtitle h2 .vs { color: var(--mute); font-weight: 500; font-size: 18px; margin: 0 6px; }
+.exp { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.exp div { background: var(--sunk); border-radius: 6px; padding: 8px 10px; }
+.exp .k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+.exp .v { font: 600 22px var(--f-display); }
+.exp .t { font-size: 12px; color: var(--mute); }
+.scores { font-size: 13px; color: var(--mute); }
+.scores span { font-family: var(--f-data); color: var(--ink); }
+.warn { font-size: 13px; color: var(--amber); }
+.mbody { padding: 12px 16px 16px; display: grid; gap: 12px; }
+
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font: 600 11px var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--mute); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.n, th.n { text-align: right; font-family: var(--f-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.h { font-family: var(--f-data); font-size: 13px; color: var(--mute); white-space: nowrap; }
+.meter { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+.meter i { flex: 1; height: 6px; background: var(--bar-bg); border-radius: 3px; position: relative; overflow: hidden; }
+.meter i b { position: absolute; inset: 0 auto 0 0; background: var(--bar); border-radius: 3px; }
+.meter span { font-family: var(--f-data); font-size: 13px; width: 3.2em; text-align: right; }
+.val { color: var(--pitch); font-weight: 600; }
+.val.neg { color: var(--risk); }
+details > summary { cursor: pointer; color: var(--mute); font-size: 14px; padding: 4px 0; }
+details[open] > summary { margin-bottom: 6px; }
+.explain { background: var(--sunk); border-radius: 8px; padding: 12px 14px; font-size: 14px; white-space: pre-wrap; max-width: 75ch; }
+
+/* lo más probable hoy */
+.bands-nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.bands-nav a { font: 600 14px var(--f-data); text-decoration: none; color: var(--pitch); background: var(--pitch-soft); border-radius: 99px; padding: 4px 12px; }
+.band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.band-head .lvl { font: 700 40px var(--f-display); color: var(--pitch); line-height: 1; }
+.band-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.bm { background: var(--sunk); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; align-content: start; }
+.bm h3 { color: var(--ink); font-size: 15px; letter-spacing: .02em; text-transform: none; }
+.bm .when { font: 12px var(--f-data); color: var(--mute); }
+.ev { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 10px; font-size: 13.5px; align-items: baseline; padding: 3px 0; border-top: 1px solid var(--line); }
+.ev .p { font: 600 13px var(--f-data); }
+.ev .o { font: 12px var(--f-data); color: var(--mute); }
+.ev .hs { grid-column: 1 / -1; font: 11.5px var(--f-data); color: var(--mute); }
+
+/* combinadas del día */
+.math { background: var(--amber-soft); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; font-size: 14px; max-width: 80ch; }
+.ladder { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.rung { background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.rung .lvl { font: 700 30px var(--f-display); color: var(--pitch); line-height: 1; }
+.rung ul, .cslip ul { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 3px; }
+.rung li span, .cslip li span { color: var(--mute); }
+.slips { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.cslip { border: 1px dashed var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; background: var(--surface); }
+.cslip.value { border-color: var(--pitch); background: var(--pitch-soft); }
+.cslip-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.kv { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--mute); }
+.kv b { font: 700 22px var(--f-display); color: var(--ink); display: block; line-height: 1.1; }
+
+/* fiabilidad */
+.two { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 820px) { .two { grid-template-columns: 1fr; } }
+svg text { fill: var(--mute); font: 11px var(--f-data); }
+.prose { display: grid; gap: 10px; max-width: 70ch; }
+.prose li { margin-bottom: 6px; }
+@media (prefers-reduced-motion: no-preference) { .match { animation: rise .25s ease-out both; } @keyframes rise { from { transform: translateY(4px); } to { transform: none; } } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Pronósticos de Fútbol IA</h1>
+      <p class="lede">Probabilidades calculadas con 5 temporadas de datos: lo que más se repite en cada partido, su cuota justa y la cuota mínima a la que merece la pena apostar.</p>
+    </div>
+    <div class="status" id="status"></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-today" aria-selected="true" data-tab="today">Lo más probable hoy</button>
+    <button role="tab" id="tab-pred" aria-selected="false" data-tab="pred">Pronósticos</button>
+    <button role="tab" id="tab-day" aria-selected="false" data-tab="day">Posibles cuotas para el mismo día</button>
+    <button role="tab" id="tab-rel" aria-selected="false" data-tab="rel">Fiabilidad</button>
+    <button role="tab" id="tab-how" aria-selected="false" data-tab="how">Cómo funciona</button>
+  </nav>
+
+  <section id="pane-today" style="display:grid;gap:18px">
+    <div class="panel">
+      <div class="mtitle"><h2 id="today-title">Lo más probable hoy</h2>
+        <label class="f" for="today-sel" style="min-width:220px">Día<select id="today-sel"></select></label></div>
+      <p class="mute" id="today-info"></p>
+      <div class="bands-nav" id="bands-nav"></div>
+    </div>
+    <div id="bands" style="display:grid;gap:18px"></div>
+  </section>
+
+  <section id="pane-pred" hidden style="display:grid;gap:18px">
+    <div class="panel">
+      <div class="controls">
+        <label class="f" for="minp">Probabilidad mínima del pick <output id="minp-o"></output>
+          <input type="range" id="minp" min="0.50" max="0.85" step="0.01" value="0.62"></label>
+        <label class="f" for="maxo">Cuota justa máxima <output id="maxo-o"></output>
+          <input type="range" id="maxo" min="1.40" max="3.50" step="0.05" value="2.10"></label>
+        <label class="f" for="mino">Cuota justa mínima <output id="mino-o"></output>
+          <input type="range" id="mino" min="1.05" max="1.60" step="0.01" value="1.25"></label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="mtitle"><h2>Tu jornada</h2>
+        <div class="row-actions">
+          <label class="btn ghost" for="fx-file">Cargar fixtures.csv</label><input type="file" id="fx-file" accept=".csv,text/csv">
+          <label class="btn ghost" for="res-file">Actualizar resultados (CSV)</label><input type="file" id="res-file" accept=".csv,text/csv" multiple>
+          <button class="link" id="clear">Vaciar jornada</button>
+        </div>
+      </div>
+      <div class="addrow">
+        <label class="f" for="add-lg">Liga<select id="add-lg"></select></label>
+        <label class="f" for="add-h">Local<select id="add-h"></select></label>
+        <label class="f" for="add-a">Visitante<select id="add-a"></select></label>
+        <label class="f odds" for="add-o1">Cuota 1<input type="number" id="add-o1" step="0.01" min="1" placeholder="opc."></label>
+        <label class="f odds" for="add-ox">Cuota X<input type="number" id="add-ox" step="0.01" min="1" placeholder="opc."></label>
+        <label class="f odds" for="add-o2">Cuota 2<input type="number" id="add-o2" step="0.01" min="1" placeholder="opc."></label>
+        <button class="btn" id="add">Añadir partido</button>
+      </div>
+      <div id="msg" hidden></div>
+      <div class="fixtures" id="fixtures"></div>
+      <p class="note">Para el fin de semana real: descarga <span class="num">fixtures.csv</span> de <a href="https://www.football-data.co.uk/matches.php" target="_blank" rel="noopener">football-data.co.uk</a> y súbelo aquí (trae partidos y cuotas). Sube también el CSV de la temporada en curso de cada liga (p. ej. <a href="https://www.football-data.co.uk/mmz4281/2627/SP1.csv" target="_blank" rel="noopener">LaLiga 26/27</a>) para que el modelo tenga la forma actual. Se guarda en este navegador.</p>
+    </div>
+
+    <div id="combo"></div>
+    <div id="matches" style="display:grid;gap:18px"></div>
+  </section>
+
+  <section id="pane-day" hidden style="display:grid;gap:18px">
+    <div class="panel">
+      <h2>Posibles cuotas para el mismo día</h2>
+      <div class="math">
+        <p><b>Antes de apostar, una regla que no se puede saltar:</b> la probabilidad de una combinada es 1 ÷ cuota justa. Cuota 3 = <b>33 %</b>. Un <b>50 %</b> equivale a cuota 2 y un <b>90 %</b> a cuota 1.11. Ninguna combinada puede tener a la vez cuota 3 y un 50 % de probabilidad, salvo que la casa pague muy por encima de lo justo.</p>
+        <p>Por eso esta sección te da las dos cosas: <b>5 combinadas del 90 % al 50 %</b> con la mejor cuota posible en cada nivel, y <b>10 combinadas de cuota mínima 3</b> con la mayor probabilidad que permite la estadística. Si con las cuotas reales de la casa alguna llega al 50 %, se marca como valor.</p>
+      </div>
+      <div class="controls">
+        <label class="f" for="day-sel">Día<select id="day-sel"></select></label>
+        <label class="f" for="day-odds">Cuota mínima de las combinadas <output id="day-odds-o"></output>
+          <input type="range" id="day-odds" min="2" max="8" step="0.25" value="3"></label>
+      </div>
+      <p class="note" id="day-info"></p>
+    </div>
+    <div class="panel"><h2>Escalera de probabilidad: del 90 % al 50 %</h2><div class="ladder" id="ladder"></div></div>
+    <div class="panel"><h2 id="c10-title">10 combinadas de cuota mínima 3</h2><div class="slips" id="c10"></div>
+      <p class="note">Una pata por partido, para que las probabilidades se puedan multiplicar. La cuota es la justa salvo en las patas con cuota de casa (1X2 y más/menos 2.5 de fixtures.csv). En tu casa será algo menor por su margen: pide siempre al menos la cuota mínima.</p></div>
+  </section>
+
+  <section id="pane-rel" hidden style="display:grid;gap:18px">
+    <div class="panel">
+      <h2>¿Cuánto fiarse?</h2>
+      <p class="mute" style="max-width:70ch">Backtest semana a semana: cada jornada se pronosticó solo con los partidos anteriores y luego se comparó con lo que pasó. LaLiga 2024/25 y 2025/26 y Premier, Serie A, Bundesliga y Ligue 1 2025/26, <b id="bt-n"></b> partidos.</p>
+      <div class="two">
+        <div><h3>Probabilidad dicha frente a acierto real</h3><div id="calib"></div></div>
+        <div><h3>Picks que habría dado</h3><div class="tbl" id="bt-picks"></div>
+          <p class="note" style="margin-top:10px">Si los puntos caen sobre la diagonal, las probabilidades son honestas: cuando dice 75 %, pasa un 75 % de las veces. Eso no garantiza ganar dinero: solo hay beneficio si la casa paga más que la cuota justa.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pane-how" hidden>
+    <div class="panel prose">
+      <h2>Cómo calcula</h2>
+      <ol>
+        <li><b>Modelo Dixon-Coles por liga.</b> Estima el ataque y la defensa de cada equipo y la ventaja de jugar en casa con las últimas 5 temporadas. Los partidos recientes pesan más (vida media de un año) y los equipos con pocos datos, como los recién ascendidos, se acercan a una media algo peor. Se ajusta igual para goles, goles al descanso, córners y tarjetas (amarillas + rojas). En córners y tarjetas se añade más variabilidad, porque se dispersan más que los goles.</li>
+        <li><b>Lo que más se ha repetido.</b> Cuenta cuántas veces se cumplió cada mercado en los últimos 10 partidos en casa del local, los últimos 10 fuera del visitante y los enfrentamientos directos.</li>
+        <li><b>Probabilidad final</b> = (veces que pasó + 100 × probabilidad del modelo) ÷ (partidos + 100). Con 10 partidos hay mucha casualidad, y el backtest muestra que las rachas solas aciertan peor que el modelo; por eso pesan poco pero se enseñan.</li>
+        <li><b>Picks.</b> Mercados por encima de la probabilidad mínima, con cuota justa dentro del rango y con el histórico de acuerdo. De cada familia (líneas de goles, de córners…) se queda la línea más exigente que sigue pasando el filtro, que es la que mejor paga.</li>
+        <li><b>Cuota justa</b> = 1 ÷ probabilidad. <b>Cuota mínima</b> = justa + 3 %. Si la casa paga menos que la mínima, no hay valor y no conviene apostar.</li>
+      </ol>
+      <p class="mute">No conoce lesiones, rotaciones, árbitro ni motivación. Son probabilidades, no certezas: juega con responsabilidad y solo con dinero que puedas perder.</p>
+    </div>
+  </section>
+</div>
+
+<script>/*ENGINE*/</script>
+<script>const DATA = /*DATA*/;</script>
+<script>const FIXTURES = /*FIXTURES*/;</script>
+<script>
+(() => {
+  const E = window.Engine;
+  const $ = (id) => document.getElementById(id);
+  const NAMES = { SP1: "LaLiga", E0: "Premier League", I1: "Serie A", D1: "Bundesliga", F1: "Ligue 1", SP2: "LaLiga Hypermotion",
+    E1: "Championship", I2: "Serie B", D2: "2. Bundesliga", F2: "Ligue 2", N1: "Eredivisie", P1: "Liga Portugal", B1: "Jupiler Pro League",
+    T1: "Süper Lig", SC0: "Scottish Premiership", G1: "Super League Grecia" };
+  const EPOCH = Date.UTC(2020, 0, 1);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  };
+  const pct = (p) => p == null ? "—" : Math.round(p * 100) + "%";
+  const odd = (o) => o == null || !isFinite(o) ? "—" : o.toFixed(2);
+  const dayToDate = (d) => new Date(EPOCH + d * 864e5);
+  const fmtDay = (d) => dayToDate(d).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  const el = (tag, attrs = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) if (k === "class") e.className = v; else if (k === "text") e.textContent = v; else e.setAttribute(k, v);
+    for (const c of kids) if (c != null) e.append(c);
+    return e;
+  };
+
+  // ---- datos: incrustados + subidos por el usuario --------------------------
+  let uploads = store.get("fut_uploads", {}); // liga -> [[día, local, visitante, ...stats]]
+  const leagueCache = {};
+  function leagueData(code) {
+    const base = DATA.leagues[code] || { teams: [], m: [] };
+    const teams = base.teams.slice(), idx = new Map(teams.map((t, i) => [t, i]));
+    const key = (r) => r[0] + "|" + r[1] + "|" + r[2];
+    const rows = new Map(base.m.map((r) => [key(r), r]));
+    for (const u of uploads[code] || []) {
+      for (const t of [u[1], u[2]]) if (!idx.has(t)) { idx.set(t, teams.length); teams.push(t); }
+      const r = [u[0], idx.get(u[1]), idx.get(u[2]), ...u.slice(3)];
+      rows.set(key(r), r);
+    }
+    return { teams, rows: [...rows.values()] };
+  }
+  function league(code) {
+    if (!leagueCache[code]) { const d = leagueData(code); leagueCache[code] = d.rows.length >= 60 ? new E.League(code, d.teams, d.rows) : null; }
+    return leagueCache[code];
+  }
+  const codes = () => [...new Set([...Object.keys(DATA.leagues), ...Object.keys(uploads)])];
+
+  // ---- CSV de football-data.co.uk ---------------------------------------------
+  function parseCSV(text) {
+    const lines = text.replace(/^﻿/, "").split(/\r?\n/).filter((l) => l.trim());
+    const head = lines.shift().split(",").map((h) => h.trim());
+    return lines.map((l) => { const c = l.split(","); const o = {}; head.forEach((h, i) => (o[h] = (c[i] ?? "").trim())); return o; });
+  }
+  function parseDay(s) {
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) { let y = +m[3]; if (y < 100) y += 2000; return Math.round((Date.UTC(y, +m[2] - 1, +m[1]) - EPOCH) / 864e5); }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - EPOCH) / 864e5);
+    return null;
+  }
+  const num = (v) => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+  function importResults(text, fallbackLg) {
+    const rows = parseCSV(text);
+    if (!rows.length || !("HomeTeam" in rows[0]) || !("FTHG" in rows[0])) throw new Error("El archivo no parece un CSV de resultados de football-data.co.uk (faltan HomeTeam o FTHG).");
+    const added = {};
+    for (const r of rows) {
+      const d = parseDay(r.Date || ""), lg = r.Div || fallbackLg, fh = num(r.FTHG), fa = num(r.FTAG);
+      if (d == null || fh == null || fa == null || !r.HomeTeam || !r.AwayTeam) continue;
+      const v = (x) => { const n = num(x); return n == null ? -1 : n; };
+      const hk = num(r.HY) == null ? -1 : num(r.HY) + (num(r.HR) || 0), ak = num(r.AY) == null ? -1 : num(r.AY) + (num(r.AR) || 0);
+      (uploads[lg] ||= []);
+      const key = d + "|" + r.HomeTeam + "|" + r.AwayTeam;
+      uploads[lg] = uploads[lg].filter((u) => u[0] + "|" + u[1] + "|" + u[2] !== key);
+      uploads[lg].push([d, r.HomeTeam, r.AwayTeam, fh, fa, v(r.HTHG), v(r.HTAG), v(r.HC), v(r.AC), hk, ak]);
+      added[lg] = (added[lg] || 0) + 1;
+      delete leagueCache[lg];
+    }
+    store.set("fut_uploads", uploads);
+    return added;
+  }
+  function importFixtures(text) {
+    const rows = parseCSV(text);
+    if (!rows.length || !("HomeTeam" in rows[0]) || !("Div" in rows[0])) throw new Error("El archivo no parece fixtures.csv de football-data.co.uk (faltan Div o HomeTeam).");
+    const out = [];
+    for (const r of rows) {
+      if (!league(r.Div)) continue;
+      const o = (a, b) => num(r[a]) ?? num(r[b]);
+      out.push({ lg: r.Div, home: r.HomeTeam, away: r.AwayTeam, day: parseDay(r.Date || ""),
+        odds: { H: o("B365H", "AvgH"), D: o("B365D", "AvgD"), A: o("B365A", "AvgA"), O25: o("B365>2.5", "Avg>2.5"), U25: o("B365<2.5", "Avg<2.5") } });
+    }
+    return out;
+  }
+
+  // ---- estado ---------------------------------------------------------------------
+  const EXAMPLE = [["SP1", "Real Madrid", "Barcelona"], ["SP1", "Betis", "Sevilla"], ["SP1", "Ath Madrid", "Villarreal"],
+    ["E0", "Arsenal", "Liverpool"], ["E0", "Man City", "Chelsea"], ["E0", "Tottenham", "Newcastle"], ["I1", "Inter", "Juventus"],
+    ["I1", "Napoli", "Milan"], ["D1", "Bayern Munich", "Dortmund"], ["D1", "Leverkusen", "RB Leipzig"], ["F1", "Paris SG", "Marseille"]]
+    .map(([lg, home, away]) => ({ lg, home, away, example: true }));
+  // Los partidos publicados (jornada real) sustituyen a lo guardado cuando cambia su versión
+  let jornada = store.get("fut_jornada", null);
+  if (store.get("fut_fx_version", null) !== FIXTURES.version || !jornada || (jornada.length && jornada.every((m) => m.example))) {
+    jornada = FIXTURES.matches.length ? FIXTURES.matches.map((m) => ({ ...m })) : EXAMPLE;
+    store.set("fut_fx_version", FIXTURES.version);
+  }
+  const settings = Object.assign({ minp: 0.62, maxo: 2.10, mino: 1.25, dayOdds: 3, day: null }, store.get("fut_settings", {}));
+  const save = () => { store.set("fut_jornada", jornada); store.set("fut_settings", settings); };
+  const explanations = {};
+
+  // ---- render -------------------------------------------------------------------
+  function renderStatus() {
+    const s = $("status"); s.replaceChildren();
+    let last = 0, total = 0;
+    for (const c of codes()) { const d = leagueData(c); total += d.rows.length; for (const r of d.rows) last = Math.max(last, r[0]); }
+    s.append(el("span", {}, el("b", { text: total.toLocaleString("es-ES") }), " partidos"),
+      el("span", {}, "datos hasta ", el("b", { text: fmtDay(last) })),
+      el("span", {}, el("b", { text: String(codes().length) }), " ligas"));
+  }
+  function fillLeagueSelect() {
+    const s = $("add-lg"), cur = s.value || "SP1"; s.replaceChildren();
+    for (const c of codes()) s.append(el("option", { value: c, text: `${NAMES[c] || c}` }));
+    s.value = codes().includes(cur) ? cur : codes()[0];
+    fillTeams();
+  }
+  function fillTeams() {
+    const lg = league($("add-lg").value);
+    for (const id of ["add-h", "add-a"]) {
+      const s = $(id); s.replaceChildren();
+      const teams = lg ? lg.current : [];
+      teams.forEach((t) => s.append(el("option", { value: t, text: t })));
+      s.append(el("option", { value: "__new", text: "Recién ascendido / otro" }));
+    }
+    if ($("add-a").options.length > 1) $("add-a").selectedIndex = 1;
+  }
+  function renderFixtures() {
+    const box = $("fixtures"); box.replaceChildren();
+    if (!jornada.length) { box.append(el("p", { class: "note", text: "No hay partidos. Añade uno arriba o carga fixtures.csv." })); return; }
+    jornada.forEach((m, i) => {
+      const o = m.odds || {};
+      const oddsTxt = [o.H, o.D, o.A].some((v) => v) ? `1 ${odd(o.H)} · X ${odd(o.D)} · 2 ${odd(o.A)}` : "";
+      const rm = el("button", { class: "link", "aria-label": `Quitar ${m.home} - ${m.away}`, text: "Quitar" });
+      rm.onclick = () => { jornada.splice(i, 1); save(); renderAll(); };
+      box.append(el("div", { class: "fx" }, el("span", { class: "lg", text: m.lg }),
+        el("span", { class: "teams", text: `${m.home} – ${m.away}` }),
+        m.day != null ? el("span", { class: "odds", text: fmtDay(m.day) + (m.time ? " " + m.time : "") }) : null,
+        oddsTxt ? el("span", { class: "odds", text: oddsTxt }) : null,
+        m.example ? el("span", { class: "tag", text: "Ejemplo" }) : null, rm));
+    });
+  }
+  function meter(p) {
+    const b = el("b"); b.style.width = Math.round(p * 100) + "%";
+    return el("div", { class: "meter" }, el("i", {}, b), el("span", { text: pct(p) }));
+  }
+  const hist = (r, src) => `${r.k[src]}/${r.n[src]}`;
+  function table(cols, rows) {
+    const t = el("table"), tr = el("tr");
+    cols.forEach((c) => tr.append(el("th", { class: c.n ? "n" : "", text: c.t })));
+    t.append(el("thead", {}, tr));
+    const tb = el("tbody");
+    rows.forEach((r) => { const row = el("tr"); cols.forEach((c) => { const v = c.f(r); const td = el("td", { class: c.cls || (c.n ? "n" : "") }); td.append(v instanceof Node ? v : String(v)); row.append(td); }); tb.append(row); });
+    t.append(tb);
+    return el("div", { class: "tbl" }, t);
+  }
+  function mostFrequent(p, n = 7) {
+    const seen = new Set();
+    return p.rows.filter((r) => r.nHist >= 8 && r.fair >= 1.15).sort((a, b) => b.pHist - a.pHist)
+      .filter((r) => !seen.has(r.family) && seen.add(r.family)).slice(0, n);
+  }
+  function explainPrompt(p) {
+    const ex = Object.entries(p.expected).map(([k, v]) => `${E.SCOPE_NAMES[k]}: ${v[0].toFixed(2)} - ${v[1].toFixed(2)}`).join("; ");
+    const picks = p.picks.map((r) => `${r.label}: ${pct(r.p)} (cuota justa ${odd(r.fair)}; local en casa ${hist(r, "home")}, visitante fuera ${hist(r, "away")}, H2H ${hist(r, "h2h")})`).join("\n");
+    const freq = mostFrequent(p).map((r) => `${r.label}: ${pct(r.pHist)} (${hist(r, "home")} · ${hist(r, "away")} · ${hist(r, "h2h")})`).join("\n");
+    return `Eres un analista de apuestas deportivas que explica estadística a un aficionado, en español y en tono claro.
+Partido: ${p.home} (local) contra ${p.away} (${NAMES[p.league] || p.league}).
+Valores esperados (local - visitante): ${ex}.
+Marcadores más probables: ${p.topScores.map(([s, q]) => s + " " + pct(q)).join(", ")}.
+Picks del modelo:\n${picks || "ninguno"}
+Lo que más se ha repetido:\n${freq}
+Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los picks tienen sentido y cuál es el más sólido, y qué podría romper el pronóstico (lesiones, rotaciones, árbitro, motivación). No inventes datos que no estén aquí ni prometas resultados. Texto plano, sin listas ni títulos.`;
+  }
+  let sampleFn = null;
+  function matchCard(p, m, idx) {
+    const card = el("article", { class: "match" });
+    const head = el("div", { class: "mhead" });
+    const h2 = el("h2"); h2.append(p.home, el("span", { class: "vs", text: "vs" }), p.away);
+    head.append(el("div", { class: "mtitle" }, h2, el("span", { class: "mute small", text: `${NAMES[p.league] || p.league}${m.day != null ? " · " + fmtDay(m.day) : ""}${m.example ? " · ejemplo" : ""}` })));
+    const exp = el("div", { class: "exp" });
+    for (const [k, [a, b]] of Object.entries(p.expected))
+      exp.append(el("div", {}, el("div", { class: "k", text: `${E.SCOPE_NAMES[k]} esperados` }), el("div", { class: "v num", text: `${a.toFixed(2)} – ${b.toFixed(2)}` }), el("div", { class: "t", text: `total ${(a + b).toFixed(2)}` })));
+    head.append(exp);
+    const sc = el("p", { class: "scores" }, "Marcadores más probables: ");
+    p.topScores.forEach(([s, q], i) => { if (i) sc.append(", "); sc.append(el("span", { text: s }), ` (${pct(q)})`); });
+    head.append(sc);
+    p.warnings.forEach((w) => head.append(el("p", { class: "warn", text: "⚠ " + w })));
+    card.append(head);
+
+    const body = el("div", { class: "mbody" });
+    body.append(el("h3", { text: "Picks" }));
+    if (!p.picks.length) body.append(el("p", { class: "note", text: "Ningún mercado supera el filtro con una cuota razonable. Prueba a bajar la probabilidad mínima." }));
+    else body.append(table([
+      { t: "Mercado", f: (r) => r.label },
+      { t: "Prob.", f: (r) => meter(r.p) },
+      { t: "Cuota justa", n: 1, f: (r) => odd(r.fair) },
+      { t: "Cuota mínima", n: 1, f: (r) => odd(r.min) },
+      { t: "Casa", n: 1, f: (r) => r.book ? el("span", { class: r.value > 0.03 ? "val" : r.value < 0 ? "val neg" : "", text: `${odd(r.book)} (${r.value >= 0 ? "+" : ""}${Math.round(r.value * 100)}%)` }) : "—" },
+      { t: "Local en casa", cls: "h", f: (r) => hist(r, "home") },
+      { t: "Visit. fuera", cls: "h", f: (r) => hist(r, "away") },
+      { t: "H2H", cls: "h", f: (r) => hist(r, "h2h") },
+      { t: "Confianza", f: (r) => el("span", { class: "tag" + (r.conf === "Alta" ? " ok" : ""), text: r.conf }) },
+    ], p.picks));
+
+    const freq = el("details", {}, el("summary", { text: "Lo que más se ha repetido en el histórico" }));
+    freq.append(table([
+      { t: "Mercado", f: (r) => r.label },
+      { t: "Frecuencia", f: (r) => meter(r.pHist) },
+      { t: "Local en casa", cls: "h", f: (r) => hist(r, "home") },
+      { t: "Visit. fuera", cls: "h", f: (r) => hist(r, "away") },
+      { t: "H2H", cls: "h", f: (r) => hist(r, "h2h") },
+      { t: "Prob. final", n: 1, f: (r) => pct(r.p) },
+    ], mostFrequent(p)));
+    body.append(freq);
+
+    const all = el("details", {}, el("summary", { text: `Todos los mercados (${p.rows.length})` }));
+    all.addEventListener("toggle", () => {
+      if (!all.open || all.dataset.done) return; all.dataset.done = 1;
+      all.append(table([
+        { t: "Mercado", f: (r) => r.label },
+        { t: "Ámbito", f: (r) => E.SCOPE_NAMES[r.scope] },
+        { t: "Modelo", n: 1, f: (r) => pct(r.pModel) },
+        { t: "Histórico", n: 1, f: (r) => pct(r.pHist) },
+        { t: "Final", f: (r) => meter(r.p) },
+        { t: "Cuota justa", n: 1, f: (r) => odd(r.fair) },
+        { t: "Local en casa", cls: "h", f: (r) => hist(r, "home") },
+        { t: "Visit. fuera", cls: "h", f: (r) => hist(r, "away") },
+        { t: "H2H", cls: "h", f: (r) => hist(r, "h2h") },
+      ], p.rows.slice().sort((a, b) => b.p - a.p)));
+    });
+    body.append(all);
+
+    if (sampleFn) {
+      const key = `${p.league}|${p.home}|${p.away}`;
+      const out = el("div", { class: "explain" });
+      out.hidden = !explanations[key];
+      out.textContent = explanations[key] || "";
+      const btn = el("button", { class: "btn ghost", text: explanations[key] ? "Volver a explicar" : "Explícamelo con IA" });
+      btn.onclick = async () => {
+        btn.disabled = true; out.hidden = false; out.textContent = "Analizando…";
+        try {
+          const res = await sampleFn(explainPrompt(p), { onText: ({ text }) => { out.textContent = text; }, cache: false });
+          explanations[key] = res.text; out.textContent = res.text; btn.textContent = "Volver a explicar";
+        } catch (e) {
+          out.textContent = e && e.code === "rate_limited" ? "Demasiadas peticiones seguidas. Espera un momento y vuelve a pulsar." : "No se pudo obtener la explicación ahora.";
+          if (e && e.code === "not_granted") btn.hidden = true;
+        } finally { btn.disabled = false; }
+      };
+      body.append(el("div", { class: "row-actions" }, btn), out);
+    }
+    card.append(body);
+    return card;
+  }
+  function renderPredictions() {
+    const box = $("matches"); box.replaceChildren();
+    const preds = [];
+    jornada.forEach((m, i) => {
+      const lg = league(m.lg);
+      if (!lg) return;
+      const p = lg.predict(m.home, m.away, m.odds);
+      p.picks = E.selectPicks(p.rows, settings.minp, settings.mino, settings.maxo);
+      preds.push(p);
+      box.append(matchCard(p, m, i));
+    });
+    const c = $("combo"); c.replaceChildren();
+    const combo = E.buildCombo(preds);
+    if (combo) {
+      const legs = el("div", { class: "slip-legs" });
+      combo.legs.forEach((l) => legs.append(el("div", {}, el("span", {}, el("b", { text: l.match }), " · " + l.label), el("span", { class: "num", text: pct(l.p) }))));
+      c.append(el("div", { class: "slip" },
+        el("div", { class: "slip-head" }, el("h2", { text: "Combinada sugerida" }),
+          el("div", {}, el("span", { class: "big num", text: odd(combo.fair) }), el("span", { class: "mute small", text: `  cuota justa · ${pct(combo.prob)} de probabilidad` }))),
+        legs, el("p", { class: "note", text: `Pide al menos ${odd(combo.fair * 1.03)} en tu casa. Combina el pick más probable de cada partido; las probabilidades se multiplican.` })));
+    }
+  }
+  // ---- posibles cuotas para el mismo día ------------------------------------------------
+  const dayKey = (m) => m.day == null ? "none" : String(m.day);
+  function legList(c) {
+    const ul = el("ul");
+    c.legs.forEach((l) => ul.append(el("li", {}, el("b", { text: l.match }), " · " + l.label + " ", el("span", { text: `(${pct(l.p)} · ${odd(l.odds)}${l.book ? " casa" : ""})` }))));
+    return ul;
+  }
+  function renderDay() {
+    const sel = $("day-sel"), days = [...new Set(jornada.map(dayKey))].sort();
+    sel.replaceChildren();
+    days.forEach((d) => sel.append(el("option", { value: d, text: d === "none" ? (jornada.some((m) => m.example) ? "Jornada de ejemplo (sin fecha)" : "Sin fecha") : fmtDay(+d) })));
+    if (!days.includes(settings.day)) settings.day = days[0] ?? null;
+    sel.value = settings.day ?? "";
+    const preds = [];
+    for (const m of jornada) {
+      if (dayKey(m) !== settings.day) continue;
+      const lg = league(m.lg); if (!lg) continue;
+      preds.push(lg.predict(m.home, m.away, m.odds));
+    }
+    const lgs = new Set(jornada.filter((m) => dayKey(m) === settings.day).map((m) => NAMES[m.lg] || m.lg));
+    $("day-info").textContent = preds.length ? `${preds.length} partidos de ${[...lgs].join(", ")}. Carga fixtures.csv en «Pronósticos» para usar todos los partidos reales del día, de todas las divisiones.` : "No hay partidos ese día.";
+    const T = settings.dayOdds;
+    $("c10-title").textContent = `10 combinadas de cuota mínima ${T.toFixed(2).replace(/\.00$/, "")}`;
+
+    const lad = $("ladder"); lad.replaceChildren();
+    for (const { target, combo } of (preds.length ? E.comboLadder(preds) : [])) {
+      const r = el("div", { class: "rung" }, el("div", { class: "lvl", text: "≥ " + Math.round(target * 100) + "%" }));
+      if (!combo) r.append(el("p", { class: "note", text: "No hay patas suficientes para este nivel." }));
+      else r.append(el("div", { class: "kv" }, el("span", {}, el("b", { text: pct(combo.prob) }), "probabilidad"), el("span", {}, el("b", { text: odd(combo.odds) }), "cuota justa"),
+        el("span", {}, el("b", { text: odd(combo.odds * 1.03) }), "pide mínimo")), legList(combo));
+      lad.append(r);
+    }
+
+    const box = $("c10"); box.replaceChildren();
+    const combos = preds.length ? E.combosForOdds(preds, T, 10) : [];
+    if (!combos.length) box.append(el("p", { class: "note", text: "No se puede llegar a esa cuota con las patas de este día. Añade más partidos o baja la cuota mínima." }));
+    combos.forEach((c, i) => {
+      const val = c.anyBook && c.ev > 0.03, hit50 = c.anyBook && c.prob >= 0.5;
+      const slip = el("div", { class: "cslip" + (val ? " value" : "") },
+        el("div", { class: "cslip-top" }, el("h3", { text: `Combinada ${i + 1} · ${c.legs.length} patas` }),
+          val ? el("span", { class: "tag ok", text: hit50 ? "Valor · ≥50 %" : `Valor +${Math.round(c.ev * 100)}%` }) : null),
+        el("div", { class: "kv" }, el("span", {}, el("b", { text: pct(c.prob) }), "probabilidad"),
+          el("span", {}, el("b", { text: odd(c.odds) }), c.anyBook ? "cuota (casa+justa)" : "cuota justa"),
+          el("span", {}, el("b", { text: odd(c.odds * 1.03) }), "pide mínimo")),
+        legList(c));
+      box.append(slip);
+    });
+  }
+
+  // ---- lo más probable hoy: eventos por tramos de probabilidad ---------------------------
+  const BANDS = [0.9, 0.8, 0.7, 0.6, 0.5];
+  const localToday = () => { const n = new Date(); return Math.round((Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) - EPOCH) / 864e5); };
+  function renderToday() {
+    const sel = $("today-sel"), days = [...new Set(jornada.filter((m) => m.day != null).map((m) => m.day))].sort((a, b) => a - b);
+    sel.replaceChildren();
+    const dayName = (d) => { const t = localToday(); return (d === t ? "Hoy · " : d === t + 1 ? "Mañana · " : "") + dayToDate(d).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }); };
+    days.forEach((d) => sel.append(el("option", { value: String(d), text: dayName(d) })));
+    if (!days.length) { $("bands").replaceChildren(); $("today-info").textContent = "No hay partidos con fecha. Carga fixtures.csv o añádelos en «Pronósticos»."; return; }
+    let day = settings.todayDay;
+    if (!days.includes(day)) day = days.find((d) => d >= localToday()) ?? days[days.length - 1];
+    sel.value = String(day);
+    $("today-title").textContent = day === localToday() ? "Lo más probable hoy" : "Lo más probable el " + dayToDate(day).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", timeZone: "UTC" });
+    const ms = jornada.filter((m) => m.day === day && league(m.lg)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const preds = ms.map((m) => ({ m, p: league(m.lg).predict(m.home, m.away, m.odds) }));
+    const warn = preds.flatMap(({ p }) => p.warnings);
+    $("today-info").textContent = `${preds.length} partidos. Cada tramo reúne lo que el modelo da entre ese porcentaje y el siguiente (el de 90 %, todo lo que pasa de 90 %). De cada tipo de mercado se muestra solo la línea más exigente del tramo, que es la que mejor paga.` + (warn.length ? " ⚠ " + warn.join(" ") : "");
+    const nav = $("bands-nav"); nav.replaceChildren();
+    const box = $("bands"); box.replaceChildren();
+    BANDS.forEach((lo, bi) => {
+      const hi = bi === 0 ? 1.01 : BANDS[bi - 1];
+      const panel = el("div", { class: "panel", id: "band-" + Math.round(lo * 100) });
+      const grid = el("div", { class: "band-grid" });
+      let count = 0;
+      for (const { m, p } of preds) {
+        const best = {};
+        for (const r of p.rows) { const rp = Math.round(r.p * 100) / 100; if (rp >= lo && rp < hi && (!best[r.family] || r.p < best[r.family].p)) best[r.family] = r; }
+        const evs = Object.values(best).sort((a, b) => b.p - a.p);
+        if (!evs.length) continue;
+        count += evs.length;
+        const card = el("div", { class: "bm" }, el("h3", { text: `${p.home} – ${p.away}` }), el("span", { class: "when", text: [m.time, NAMES[m.lg] || m.lg].filter(Boolean).join(" · ") }));
+        evs.forEach((r) => card.append(el("div", { class: "ev" }, el("span", { text: r.label }), el("span", { class: "p", text: pct(r.p) }),
+          el("span", { class: "o", text: "pide " + odd(r.min) }),
+          el("span", { class: "hs", text: `en casa ${hist(r, "home")} · fuera ${hist(r, "away")} · H2H ${hist(r, "h2h")}` }))));
+        grid.append(card);
+      }
+      const label = bi === 0 ? "90 % o más" : `${Math.round(lo * 100)}–${Math.round(hi * 100) - 1} %`;
+      panel.append(el("div", { class: "band-head" }, el("span", { class: "lvl", text: Math.round(lo * 100) + "%" }),
+        el("span", { class: "mute", text: `${label} · cuota justa ${odd(1 / Math.min(hi, 1))}–${odd(1 / lo)} · ${count} sucesos` })), grid);
+      if (!count) panel.append(el("p", { class: "note", text: "Nada en este tramo." }));
+      box.append(panel);
+      nav.append(el("a", { href: "#band-" + Math.round(lo * 100), text: Math.round(lo * 100) + "%" }));
+    });
+  }
+
+  function renderAll() { renderStatus(); renderFixtures(); renderPredictions(); renderDay(); renderToday(); }
+
+  // ---- fiabilidad -------------------------------------------------------------------
+  function renderReliability() {
+    $("bt-n").textContent = DATA.bt.matches.toLocaleString("es-ES");
+    const W = 360, H = 300, pad = 40, x = (v) => pad + (v - 0.15) / 0.8 * (W - pad - 12), y = (v) => H - pad - (v - 0.15) / 0.8 * (H - pad - 12);
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("width", "100%"); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Probabilidad pronosticada frente a frecuencia real");
+    const mk = (tag, a) => { const e = document.createElementNS(ns, tag); for (const k in a) e.setAttribute(k, a[k]); svg.append(e); return e; };
+    for (const v of [0.2, 0.4, 0.6, 0.8]) {
+      mk("line", { x1: x(v), x2: x(v), y1: y(0.15), y2: y(0.95), stroke: "var(--line)", "stroke-width": 1 });
+      mk("line", { x1: x(0.15), x2: x(0.95), y1: y(v), y2: y(v), stroke: "var(--line)", "stroke-width": 1 });
+      mk("text", { x: x(v), y: H - pad + 16, "text-anchor": "middle" }).textContent = v * 100 + "%";
+      mk("text", { x: pad - 6, y: y(v) + 4, "text-anchor": "end" }).textContent = v * 100 + "%";
+    }
+    mk("text", { x: (W + pad) / 2, y: H - 6, "text-anchor": "middle" }).textContent = "probabilidad que dio el modelo";
+    const yl = mk("text", { x: 12, y: (H - pad) / 2, "text-anchor": "middle", transform: `rotate(-90 12 ${(H - pad) / 2})` }); yl.textContent = "acierto real";
+    mk("line", { x1: x(0.15), y1: y(0.15), x2: x(0.95), y2: y(0.95), stroke: "var(--mute)", "stroke-dasharray": "4 4", "stroke-width": 1 });
+    const pts = DATA.bt.calib.map((c) => [x(c.p), y(c.a)]);
+    mk("polyline", { points: pts.map((p) => p.join(",")).join(" "), fill: "none", stroke: "var(--pitch)", "stroke-width": 2 });
+    DATA.bt.calib.forEach((c, i) => {
+      const r = 3 + Math.sqrt(c.n) / 18;
+      const cir = mk("circle", { cx: pts[i][0], cy: pts[i][1], r: r.toFixed(1), fill: "var(--pitch)", stroke: "var(--surface)", "stroke-width": 1.5 });
+      const t = document.createElementNS(ns, "title"); t.textContent = `Dijo ${pct(c.p)} · pasó ${pct(c.a)} · ${c.n.toLocaleString("es-ES")} casos`; cir.append(t);
+    });
+    $("calib").replaceChildren(svg);
+    $("bt-picks").replaceChildren(table([
+      { t: "Tipo", f: (r) => r.k === "Total" ? el("b", { text: r.k }) : r.k },
+      { t: "Picks", n: 1, f: (r) => r.n.toLocaleString("es-ES") },
+      { t: "Prob. dicha", n: 1, f: (r) => (r.p * 100).toFixed(1) + "%" },
+      { t: "Acierto real", n: 1, f: (r) => (r.a * 100).toFixed(1) + "%" },
+    ], DATA.bt.picks).firstChild);
+  }
+
+  // ---- eventos ---------------------------------------------------------------------
+  function bindRange(id, fmt) {
+    const i = $(id), o = $(id + "-o");
+    i.value = settings[id]; o.textContent = fmt(+i.value);
+    i.addEventListener("input", () => { settings[id] = +i.value; o.textContent = fmt(settings[id]); save(); renderPredictions(); });
+  }
+  bindRange("minp", (v) => Math.round(v * 100) + "%");
+  bindRange("maxo", (v) => v.toFixed(2));
+  bindRange("mino", (v) => v.toFixed(2));
+  {
+    const i = $("day-odds"), o = $("day-odds-o");
+    i.value = settings.dayOdds; o.textContent = (+i.value).toFixed(2);
+    i.addEventListener("change", () => { settings.dayOdds = +i.value; save(); renderDay(); });
+    i.addEventListener("input", () => { o.textContent = (+i.value).toFixed(2); });
+    $("today-sel").addEventListener("change", (e) => { settings.todayDay = +e.target.value; save(); renderToday(); });
+    $("day-sel").addEventListener("change", (e) => { settings.day = e.target.value; save(); renderDay(); });
+  }
+  $("add-lg").addEventListener("change", fillTeams);
+  function showMsg(text, err) { const m = $("msg"); m.hidden = false; m.className = "msg" + (err ? " err" : ""); m.textContent = text; }
+  $("add").onclick = () => {
+    const lg = $("add-lg").value;
+    let h = $("add-h").value, a = $("add-a").value;
+    if (h === "__new") h = "Ascendido local"; if (a === "__new") a = "Ascendido visitante";
+    if (h === a) { showMsg("Elige dos equipos distintos.", true); return; }
+    const o = (id) => num($(id).value);
+    jornada = jornada.filter((m) => !m.example);
+    jornada.push({ lg, home: h, away: a, odds: { H: o("add-o1"), D: o("add-ox"), A: o("add-o2") } });
+    ["add-o1", "add-ox", "add-o2"].forEach((id) => ($(id).value = ""));
+    $("msg").hidden = true; save(); renderAll();
+  };
+  $("clear").onclick = () => { jornada = []; save(); renderAll(); };
+  const readFile = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(f); });
+  $("fx-file").addEventListener("change", async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const fx = importFixtures(await readFile(f));
+      if (!fx.length) throw new Error("No hay partidos de las ligas con datos (" + codes().join(", ") + ") en ese archivo.");
+      jornada = fx; save(); renderAll(); showMsg(`Cargados ${fx.length} partidos con sus cuotas.`);
+    } catch (err) { showMsg(err.message, true); }
+    e.target.value = "";
+  });
+  $("res-file").addEventListener("change", async (e) => {
+    try {
+      const tot = {};
+      for (const f of e.target.files) {
+        const guess = (f.name.match(/^([A-Z]+\d)/) || [])[1] || $("add-lg").value;
+        Object.entries(importResults(await readFile(f), guess)).forEach(([k, v]) => (tot[k] = (tot[k] || 0) + v));
+      }
+      fillLeagueSelect(); renderAll();
+      showMsg("Resultados añadidos: " + Object.entries(tot).map(([k, v]) => `${NAMES[k] || k} ${v}`).join(", ") + ". El modelo se ha reajustado.");
+    } catch (err) { showMsg(err.message, true); }
+    e.target.value = "";
+  });
+  document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("nav.tabs button").forEach((x) => x.setAttribute("aria-selected", x === b ? "true" : "false"));
+    for (const t of ["today", "pred", "day", "rel", "how"]) $("pane-" + t).hidden = t !== b.dataset.tab;
+  }));
+
+  fillLeagueSelect();
+  renderAll();
+  renderReliability();
+  if (window.claude?.use) window.claude.use("sample").then((s) => { if (s) { sampleFn = s; renderPredictions(); } }).catch(() => {});
+})();
+</script>
