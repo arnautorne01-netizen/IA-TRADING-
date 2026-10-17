@@ -72,6 +72,7 @@ textarea{min-height:70px;resize:vertical}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{font:500 .82rem var(--f-body);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:4px 10px;border-radius:999px;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.sess{display:flex;flex-direction:column;gap:6px}.sess-row{border:1px solid var(--line);border-radius:var(--r);padding:6px 8px;display:flex;flex-direction:column;gap:4px}.sess-row.now{border-color:var(--accent,#2b50c8);box-shadow:0 0 0 1px var(--accent,#2b50c8) inset}.sess-row.done{opacity:.75}.sess-row .prob{height:24px;font-size:.8rem}.sess-head{display:flex;justify-content:space-between;gap:6px;align-items:center;flex-wrap:wrap}
 .prob{display:flex;height:34px;border-radius:var(--r);overflow:hidden;font:600 .9rem var(--f-mono)}
 .prob div{display:flex;align-items:center;padding-inline:10px;white-space:nowrap}
 .prob .u{background:var(--up-soft);color:var(--up);justify-content:flex-start}
@@ -193,7 +194,7 @@ details summary{cursor:pointer;font-weight:600}
       <div>
         <div class="label" id="brief-date">Briefing del día</div>
         <h2 id="brief-title">Sesgo diario: 60% fundamental, 30% técnico, 10% sentimiento</h2>
-        <div class="small muted">Briefing de lunes a viernes a las 7:50 y actualización cada 30 minutos de 8:20 a 21:50 (hora de Madrid)</div>
+        <div class="small muted">Sesgo por sesión: Asia (1–9 h) se prevé la noche anterior a las 23:20; Londres (9–14 h) y Nueva York (14–22 h) en el briefing de las 7:50, y se actualiza cada 30 minutos de 8:20 a 21:50 (hora de Madrid)</div>
       </div>
       <select id="brief-picker" aria-label="Elegir día" style="width:auto"></select>
     </div>
@@ -1587,6 +1588,32 @@ $("#del-yes").addEventListener("click", async () => {
 // =====================================================================
 // Briefing diario
 // =====================================================================
+const SESS = [{k: "asia", label: "Asia", from: 1, to: 9}, {k: "londres", label: "Londres", from: 9, to: 14}, {k: "nueva_york", label: "Nueva York", from: 14, to: 22}];
+function madridHour() { const s = new Date().toLocaleTimeString("es-ES", {timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hourCycle: "h23"}); const [H, M] = s.split(":").map(Number); return H + M / 60; }
+function sessState(k, date) {
+  const S = SESS.find(x => x.k === k); if (date !== todayISO()) return date < todayISO() ? "done" : "next";
+  const h = madridHour(); return h >= S.to ? "done" : h >= S.from ? "now" : "next";
+}
+function sessBlock(d, date) {
+  const S = d.sesiones; if (!S) return "";
+  const nextK = SESS.find(x => sessState(x.k, date) === "next")?.k;
+  return `<div class="sess">${SESS.filter(x => S[x.k]).map(x => {
+    const s = S[x.k], up = Math.round(100 * Number(s.prob_up)), dn = 100 - up, st = sessState(x.k, date), o = s.outcome;
+    const tag = st === "now" ? `<span class="pill warn">AHORA</span>` : x.k === nextK ? `<span class="pill">SIGUIENTE</span>` : "";
+    return `<div class="sess-row ${st === "now" ? "now" : st === "done" ? "done" : ""}">
+      <div class="sess-head"><span><b>${x.label}</b> <span class="small muted">${String(x.from).padStart(2, "0")}:00–${String(x.to).padStart(2, "0")}:00</span> ${tag}</span>
+        <span class="row" style="gap:4px">${s.bias ? `<span class="small ${up >= 55 ? "pos" : up <= 45 ? "neg" : "muted"}">${esc(s.bias)}</span>` : ""}${o && typeof o.hit === "boolean" ? `<span class="pill ${o.hit ? "up" : "down"}">${o.hit ? "✓" : "✗"} ${esc(o.change || "")}</span>` : o?.change ? `<span class="pill">${esc(o.change)}</span>` : ""}</span></div>
+      ${Number.isFinite(up) ? `<div class="prob" role="img" aria-label="${x.label}: ${up}% subida, ${dn}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${dn}%">${dn}% ↓</div></div>` : ""}
+      ${s.motivo ? `<div class="small">${esc(s.motivo)}</div>` : ""}
+      ${s.niveles || s.clave ? `<div class="small muted">${s.clave ? esc(s.clave) : ""}${s.niveles ? (s.clave ? " · " : "") + Object.entries(s.niveles).map(([a, b]) => `${esc(a)}: ${esc(b)}`).join(" · ") : ""}</div>` : ""}
+    </div>`; }).join("")}</div>`;
+}
+function sessRecords() {
+  const out = [];
+  for (const b of state.briefings) for (const p of PAIRS) { const S = b.pairs?.[p]?.sesiones; if (!S) continue;
+    for (const x of SESS) { const o = S[x.k]?.outcome; if (o && typeof o.hit === "boolean") out.push({date: b.date, pair: p, sess: x.k, hit: o.hit}); } }
+  return out;
+}
 function renderBriefing() {
   const bs = state.briefings;
   $("#brief-empty").hidden = bs.length > 0;
@@ -1603,10 +1630,11 @@ function renderBriefing() {
     const up = Math.round(100 * d.prob_up), down = 100 - up;
     const out = d.outcome ? `<span class="pill ${d.outcome.hit ? "up" : "down"}">${d.outcome.hit ? "Acertado" : "Fallado"}: cerró ${esc(d.outcome.change)}</span>` : "";
     return `<div class="panel pair-card">
-      <div class="panel-head"><h3>${INS(p).label}</h3><span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span></div>
+      <div class="panel-head"><h3>${INS(p).label}</h3>${(() => { const k = d.sesiones && (SESS.find(x => d.sesiones[x.k] && sessState(x.k, b.date) === "now") || SESS.find(x => d.sesiones[x.k] && sessState(x.k, b.date) === "next")); const s = k && d.sesiones[k.k];
+        return s ? `<span class="pill ${s.prob_up >= 0.55 ? "up" : s.prob_up <= 0.45 ? "down" : ""}">${esc(k.label)}: ${esc(s.bias || "")}</span>` : `<span class="pill ${up >= 55 ? "up" : up <= 45 ? "down" : ""}">${esc(d.bias)}</span>`; })()}</div>
       <div class="price num"${String(d.price ?? "").length > 14 ? ` style="font-size:.95rem;font-weight:500"` : ""}>${esc(d.price ?? "")}</div>
-      <div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
-      ${out}
+      ${d.sesiones ? sessBlock(d, b.date) + `<div class="small muted">Día completo: ↑ ${up}% · ${down}% ↓ ${out}</div>` : `<div class="prob" role="img" aria-label="${up}% subida, ${down}% bajada"><div class="u" style="width:${up}%">↑ ${up}%</div><div class="d" style="width:${down}%">${down}% ↓</div></div>
+      ${out}`}
       ${d.confianza ? (() => { const C = d.confianza, li = a => (a || []).map(z => `<li>${esc(z)}</li>`).join("");
         return `<details class="conf"><summary><span class="pill ${C.nivel === "alta" ? "up" : C.nivel === "baja" ? "down" : "warn"}">Confianza ${esc(C.nivel || "—")}</span> <span class="small muted">${C.fuentes ? `${esc(C.fuentes)} fuentes${C.medios ? ` de ${esc(C.medios)} medios` : ""}` : ""} · ¿por qué este %?</span></summary>
           ${C.nota ? `<p class="small" style="margin:6px 0 0">${esc(C.nota)}</p>` : ""}
@@ -1786,7 +1814,7 @@ function weeklyRecords() {
 const CHECK_SCHEMA = `{"instrumento":"EURUSD|GBPUSD|DXY|NAS100|SPX500","direccion":"Long|Short|null","veredicto":"Entra|Espera|No entres","puntuacion":0-100,"resumen":"2 frases con el porqué","checklist":[{"regla":"comprobación de su checklist","cumple":"si|no|no se ve","nota":"qué ves en el gráfico"}],"a_favor":["..."],"en_contra":["..."],"sesgo":"si va a favor o en contra del sesgo de hoy y de la semana, con el %","noticias":"riesgo de noticias en la próxima hora o 'sin noticias relevantes'","riesgo":{"entrada":número|null,"stop":número|null,"objetivo":número|null,"rr":número|null,"comentario":"si el stop está protegido y si el R:R compensa"},"que_esperar":"si es Espera: la confirmación concreta que falta; si es No entres: qué tendría que cambiar","invalidacion":"dónde deja de valer la idea"}`;
 function checkContext() {
   const b = state.briefings.find(x => x.date === todayISO()) || state.briefings[0], now = Date.now();
-  const pairs = b ? Object.fromEntries(PAIRS.filter(p => b.pairs?.[p]).map(p => [p, {prob_subida: b.pairs[p].prob_up, sesgo: b.pairs[p].bias, niveles: b.pairs[p].levels, invalidacion: b.pairs[p].invalidation}])) : {};
+  const pairs = b ? Object.fromEntries(PAIRS.filter(p => b.pairs?.[p]).map(p => [p, {prob_subida_dia: b.pairs[p].prob_up, sesgo: b.pairs[p].bias, por_sesion: b.pairs[p].sesiones ? Object.fromEntries(SESS.filter(x => b.pairs[p].sesiones[x.k]).map(x => [x.label, {prob_subida: b.pairs[p].sesiones[x.k].prob_up, sesgo: b.pairs[p].sesiones[x.k].bias, estado: sessState(x.k, b.date)}])) : null, niveles: b.pairs[p].levels, invalidacion: b.pairs[p].invalidation}])) : {};
   const semana = b ? (state.briefings.find(x => x.date <= b.date && x.semanal?.pares)?.semanal?.pares || null) : null;
   const news = (b?.date === todayISO() ? b.news || [] : []).map(n => ({n, at: newsAt(n, b.date)})).filter(e => e.at != null && e.at - now < 90 * 6e4 && now - e.at < 20 * 6e4)
     .map(e => `${e.n.time} ${e.n.currency || ""} ${e.n.title} (${isPublished(e.n) ? "publicado: " + e.n.actual : "pendiente, en " + Math.round((e.at - now) / 6e4) + " min"})`);
@@ -1956,6 +1984,8 @@ function renderAccuracy() {
   const tot = rate(R, "hitFin");
   $("#acc-kpis").innerHTML = [["Aciertos (% final)", fmt(tot)], ["Aciertos (% de primera hora)", fmt(rate(R, "hitFirst"))],
     ...VIS().filter(p => R.some(r => r.pair === p)).map(p => [INS(p).label, fmt(rate(R.filter(r => r.pair === p), "hitFin"))]),
+    ...(() => { const S = sessRecords().filter(r => inMercado(r.pair)); if (!S.length) return []; const f = a => { const h = a.filter(r => r.hit).length; return a.length ? `${h}/${a.length} <span class="small muted">(${Math.round(100 * h / a.length)}%)</span>` : "—"; };
+      return [["Aciertos por sesión", f(S)], ...SESS.map(x => ["· " + x.label, f(S.filter(r => r.sess === x.k))])]; })(),
     ["Aciertos semanales", (() => { const w = weeklyRecords().filter(r => inMercado(r.pair)); const h = w.filter(r => r.hit).length; return w.length ? `${h}/${w.length} <span class="small muted">(${Math.round(100 * h / w.length)}%)</span>` : `<span class="small muted">sin semanas cerradas</span>`; })()],
     ["Días registrados", days.length], ["Racha actual", streak ? `${streak} ${streak === 1 ? "día" : "días"} acertando` : "—"]]
     .map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("");
