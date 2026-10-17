@@ -93,3 +93,78 @@ trading_ai/ai_coach.py     Coach con Claude
 trading_ai/cli.py          Línea de comandos
 tests/                     Tests (pytest)
 ```
+
+---
+
+# ⚽ IA de pronósticos de fútbol
+
+Pronostica los partidos del fin de semana con datos de los **últimos 5 años** y te dice, en cada partido,
+**qué es lo que más se ha repetido** y qué probabilidad tiene de volver a pasar, para buscar **cuotas razonables
+(≈1.25–2.10) respaldadas por estadística**, no cuotas exageradas.
+
+```bash
+pip install -r requirements.txt
+streamlit run futbol_app.py                          # versión web
+python -m futbol_ai.cli finde                         # partidos del finde (LaLiga, Premier, Serie A, Bundesliga, Ligue 1)
+python -m futbol_ai.cli finde --ligas SP1,SP2 --html informe.html
+python -m futbol_ai.cli finde --liga SP1 --partidos "Real Madrid - Barcelona" "Betis - Sevilla"
+python -m futbol_ai.cli partido "Real Madrid" "Barcelona" --liga SP1 --todo
+python -m futbol_ai.cli backtest --liga SP1           # ¿cuánto fiarse? (temporadas pasadas)
+```
+
+**Versión web:** `web/futbol.html`, publicada en claude.ai: https://claude.ai/artifact/S38dmXcWVD4tUSPujUteeR
+El modelo corre en el navegador con 5 temporadas incrustadas; sube `fixtures.csv` y el CSV de la temporada en curso
+de football-data.co.uk para pronosticar la jornada real. El botón «Explícamelo con IA» usa tu cuenta de Claude.
+
+### Qué te da en cada partido
+
+- **Goles, goles en la 1ª parte, córners y tarjetas esperados** de cada equipo y los marcadores más probables.
+- **Lo que más se ha repetido**: p. ej. «Más de 1.5 goles: 9/10 en casa del local · 8/10 fuera del visitante · 4/5 H2H».
+- **Picks**: los mercados con probabilidad ≥ 62%, cuota justa entre 1.25 y 2.10 y con el histórico de acuerdo.
+  En cada familia (líneas de goles, de córners...) elige la línea más exigente que siga pasando el filtro, que es la que mejor paga.
+- **Cuota justa** (= 1/probabilidad) y **cuota mínima** (justa + 3%): si tu casa paga menos, no hay valor.
+  Cuando hay cuotas de Bet365/media del mercado en el calendario, calcula la ventaja (`valor = prob × cuota − 1`).
+- **Combinada sugerida** con el pick más probable de varios partidos hasta una cuota ≈ 1.8–3.2.
+
+Mercados: 1X2, doble oportunidad, más/menos 0.5–4.5 goles, ambos marcan, goles de cada equipo, combinadas 1X/X2 + goles,
+1ª parte (gol, más/menos 1.5, 1X/X2), córners (totales, por equipo, quién saca más) y tarjetas (amarillas + rojas; totales, por equipo).
+
+### Cómo calcula la probabilidad
+
+1. **Modelo Dixon-Coles** por liga con 5 temporadas: fuerza de ataque y defensa de cada equipo y ventaja de jugar en casa.
+   Los partidos recientes pesan más (vida media ≈ 1 año) y los equipos con pocos datos (ascendidos) se encogen hacia una media algo peor.
+   El mismo modelo se ajusta para goles al descanso, córners y tarjetas; en córners y tarjetas se añade sobredispersión
+   (binomial negativa + un factor común del partido, porque son más variables que los goles).
+2. **Frecuencia histórica**: últimos 10 partidos en casa del local, últimos 10 fuera del visitante y enfrentamientos directos.
+3. **Probabilidad final** = (veces que pasó + 100 × prob. del modelo) / (partidos + 100).
+   El peso 100 sale del backtest: las rachas de 10 partidos tienen mucho ruido y, solas, predicen peor que el modelo.
+
+### Fiabilidad (backtest walk-forward, cada semana solo con datos anteriores)
+
+| Ligas | Picks | Prob. media dicha | Acierto real |
+|---|---|---|---|
+| LaLiga 24/25 + 25/26 | 3 800 | 75.0% | 77.3% |
+| Premier, Serie A, Bundesliga, Ligue 1 25/26 | 6 860 | 75.5% | 76.0% |
+
+Cuando dice 70–75%, pasa un 73%; cuando dice 80–85%, pasa un 84%. **Estar bien calibrado no basta para ganar dinero:**
+solo hay beneficio si la casa paga más que la cuota justa, por eso compara siempre con la cuota mínima.
+
+### Datos
+
+- Resultados y estadísticas: [football-data.co.uk](https://www.football-data.co.uk) (temporada actual + 5 anteriores),
+  con un espejo en GitHub como respaldo para las 5 grandes ligas. Se guardan en `data/futbol/` y la temporada en curso se refresca cada 12 h.
+- Calendario y cuotas del fin de semana: `football-data.co.uk/fixtures.csv`. Si no aparece un partido, escríbelo a mano.
+- Ligas: LaLiga, Hypermotion, Premier, Championship, Serie A/B, Bundesliga 1/2, Ligue 1/2, Eredivisie, Portugal, Bélgica, Turquía, Escocia y Grecia.
+
+> ⚠️ No tiene en cuenta lesiones, rotaciones, árbitro ni motivación: revísalo antes de apostar. Son probabilidades, no certezas; juega con responsabilidad.
+
+```
+futbol_app.py              Web Streamlit (fin de semana, partidos a mano, backtest)
+futbol_ai/data.py          Descarga de resultados y calendario
+futbol_ai/model.py         Modelo Dixon-Coles con decaimiento y sobredispersión
+futbol_ai/markets.py       Catálogo de mercados
+futbol_ai/predictor.py     Mezcla modelo + histórico, cuotas justas, picks y combinada
+futbol_ai/backtest.py      Backtest y calibración
+futbol_ai/report.py        Informe en texto y HTML
+futbol_ai/cli.py           Línea de comandos
+```
