@@ -3,7 +3,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: hoja de apuestas de una columna — barra de ajustes, jornada editable, combinada y una ficha por partido */
+/* Tema claro fijo a petición del usuario, también con el móvil en modo oscuro.
+   Layout: hoja de apuestas de una columna — barra de ajustes, jornada editable, combinada y una ficha por partido */
 :root {
   --bg: #eef2ee; --surface: #ffffff; --sunk: #f6f8f5; --ink: #13201a; --mute: #5a6a61; --line: #d9e1db;
   --pitch: #1b6a45; --pitch-soft: #e1efe6; --amber: #a8620c; --amber-soft: #fbf0df; --risk: #b42318;
@@ -11,15 +12,8 @@
   --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
-  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
-  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; } }
-:root[data-theme="dark"] {
-  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
-  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
-  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -745,6 +739,7 @@ svg text { fill: var(--mute); font: 11px var(--f-data); }
   if (store.get("fut_fx_version", null) !== FIXTURES.version || !jornada || (jornada.length && jornada.every((m) => m.example))) {
     jornada = FIXTURES.matches.length ? FIXTURES.matches.map((m) => ({ ...m })) : EXAMPLE;
     store.set("fut_fx_version", FIXTURES.version);
+    store.set("fut_jornada", jornada);
   }
   const settings = Object.assign({ minp: 0.62, maxo: 2.10, mino: 1.25, dayOdds: 3, day: null }, store.get("fut_settings", {}));
   const save = () => { store.set("fut_jornada", jornada); store.set("fut_settings", settings); };
@@ -976,7 +971,13 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
   const BANDS = [0.9, 0.8, 0.7, 0.6, 0.5];
   const localToday = () => { const n = new Date(); return Math.round((Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) - EPOCH) / 864e5); };
   function renderToday() {
-    const sel = $("today-sel"), days = [...new Set(jornada.filter((m) => m.day != null).map((m) => m.day))].sort((a, b) => a - b);
+    // Partidos publicados + los que el usuario haya añadido con fecha (sin duplicados)
+    const seenFx = new Set(), all = [];
+    for (const m of [...FIXTURES.matches, ...jornada]) {
+      const k = m.lg + "|" + m.home + "|" + m.away + "|" + m.day;
+      if (m.day != null && !seenFx.has(k)) { seenFx.add(k); all.push(m); }
+    }
+    const sel = $("today-sel"), days = [...new Set(all.map((m) => m.day))].sort((a, b) => a - b);
     sel.replaceChildren();
     const dayName = (d) => { const t = localToday(); return (d === t ? "Hoy · " : d === t + 1 ? "Mañana · " : "") + dayToDate(d).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }); };
     days.forEach((d) => sel.append(el("option", { value: String(d), text: dayName(d) })));
@@ -985,7 +986,7 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
     if (!days.includes(day)) day = days.find((d) => d >= localToday()) ?? days[days.length - 1];
     sel.value = String(day);
     $("today-title").textContent = day === localToday() ? "Lo más probable hoy" : "Lo más probable el " + dayToDate(day).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", timeZone: "UTC" });
-    const ms = jornada.filter((m) => m.day === day && league(m.lg)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const ms = all.filter((m) => m.day === day && league(m.lg)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     const preds = ms.map((m) => ({ m, p: league(m.lg).predict(m.home, m.away, m.odds) }));
     const warn = preds.flatMap(({ p }) => p.warnings);
     $("today-info").textContent = `${preds.length} partidos. Cada tramo reúne lo que el modelo da entre ese porcentaje y el siguiente (el de 90 %, todo lo que pasa de 90 %). De cada tipo de mercado se muestra solo la línea más exigente del tramo, que es la que mejor paga.` + (warn.length ? " ⚠ " + warn.join(" ") : "");
