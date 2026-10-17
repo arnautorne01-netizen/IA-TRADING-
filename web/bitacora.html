@@ -322,6 +322,18 @@ details summary{cursor:pointer;font-weight:600}
       <div class="row" style="gap:10px;flex-wrap:wrap"><button type="button" class="btn" id="sim-ai" hidden></button><span class="small muted" id="sim-st" role="status"></span></div>
       <details class="small"><summary class="muted">Cómo se calcula</summary><p style="margin:4px 0 0">Para cada operación se usa cuántos R llegó a ir el precio a favor antes de tocar el stop (lo mide la IA mirando tus capturas). Si llegó al objetivo, cuenta como ganada (+objetivo R); si no, como perdida (−1R). Las ganadoras sin medir cuentan con el R que consiguieron como mínimo; las perdedoras sin medir no se usan. Es una simulación con lo que se ve en las capturas: no tiene en cuenta comisiones ni deslizamiento.</p></details>
     </div>
+    <div class="panel" id="nq-panel">
+      <div class="panel-head"><h3>🤖 Pregúntale a la IA por tus números</h3><span class="small muted">Win rate, R:R, horarios, pares… para ganar más</span></div>
+      <div id="nq-pins"></div>
+      <div class="chips" id="nq-quick"></div>
+      <div id="nq-log" class="sq-log" aria-live="polite"></div>
+      <form id="nq-form" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <label class="sr-only" for="nq-txt">Tu pregunta</label>
+        <textarea id="nq-txt" rows="2" style="flex:1 1 260px" placeholder="Ej.: ¿qué R:R me da más beneficio? ¿en qué par y sesión gano más? ¿qué debería dejar de hacer?"></textarea>
+        <button type="submit" class="btn primary">Preguntar</button>
+      </form>
+      <p class="small muted" id="nq-st" role="status" style="margin:0"></p>
+    </div>
     <div class="panel">
       <div class="panel-head"><h3>Curva de capital</h3><span class="muted small">R acumulado operación a operación</span></div>
       <div id="j-equity"></div>
@@ -927,6 +939,7 @@ async function boot() {
     state.checks = snap.docs.filter(d => ["check_result", "pending_check"].includes(d.data()?.kind)).map(d => ({id: d.id, ...d.data()})).sort((a, b) => String(b.created).localeCompare(String(a.created)));
     renderChecks();
     const sc = snap.docs.find(d => d.id === "strategy_chat"); if (sc) state.stratChat = sc.data();
+    const nc = snap.docs.find(d => d.id === "stats_chat"); if (nc) state.statsChat = nc.data();
     const mj = snap.docs.find(d => d.id === "improvements"); state.mejoras = mj ? mj.data() : null; renderMejoras();
     state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
     const prof = snap.docs.find(d => d.id === "strategy_profile");
@@ -1098,10 +1111,86 @@ async function measureMfe(list) {
 }
 $("#sim-add").addEventListener("click", () => { const v = num($("#sim-custom").value); if (v == null || v <= 0 || v > 10) return; if (!SIM_TARGETS.includes(v)) SIM_TARGETS.push(v); try { localStorage.setItem("simTargets", JSON.stringify(SIM_TARGETS)); } catch {} $("#sim-custom").value = ""; renderAll(); });
 document.addEventListener("click", e => { const d = e.target.closest("[data-sim-del]"); if (!d) return; SIM_TARGETS = SIM_TARGETS.filter(x => x !== +d.dataset.simDel); try { localStorage.setItem("simTargets", JSON.stringify(SIM_TARGETS)); } catch {} renderAll(); });
+const NQ_QUICK = ["¿Qué R:R me da más beneficio?", "¿En qué par, sesión y hora gano más?", "¿Qué debería dejar de hacer para ganar más?", "¿Cuál es mi esperanza por operación y cómo la subo?", "¿Qué confluencias me hacen ganar más?", "¿Cuánto debería arriesgar por operación?"];
+function nqData() { return state.statsChat || {mensajes: [], fijados: []}; }
+function renderStatsChat() {
+  const C = nqData(), log = $("#nq-log"); if (!log) return;
+  $("#nq-quick").innerHTML = NQ_QUICK.map(q => `<button type="button" class="pill" data-nq="${esc(q)}">${esc(q)}</button>`).join("");
+  $("#nq-pins").innerHTML = (C.fijados || []).length ? `<div class="small"><b>📌 Conclusiones guardadas</b></div>${C.fijados.map((t, i) => `<div class="sq-pin small">${mdLite(t).replace(/\n/g, "<br>")} <button type="button" class="btn small" data-nq-unpin="${i}" aria-label="Quitar">Quitar</button></div>`).join("")}` : "";
+  const ms = C.mensajes || [];
+  log.innerHTML = ms.length ? ms.map((m, i) => `<div class="sq-m ${m.rol === "yo" ? "yo" : "ia"}"><div class="small muted">${m.rol === "yo" ? "Tú" : "IA"} · ${esc(new Date(m.at || Date.now()).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}))}</div><div>${mdLite(m.texto || "").replace(/\n/g, "<br>")}</div>${m.rol === "ia" && m.texto ? `<div class="sq-act"><button type="button" class="btn small" data-nq-pin="${i}">📌 Guardar conclusión</button></div>` : ""}</div>`).join("")
+    : `<p class="small muted" style="margin:0">Pregunta lo que quieras sobre tus números: qué R:R te conviene, dónde ganas y dónde pierdes, qué filtros subirían tu beneficio… La IA calcula con todas tus operaciones (respetando los filtros de arriba) y te da cifras concretas.</p>`;
+  log.scrollTop = log.scrollHeight;
+}
+async function saveStatsChat(C) { state.statsChat = C; renderStatsChat(); if (col) { try { await col.doc("stats_chat").set({kind: "stats_chat", ...C}); } catch {} } }
+function statsContext(ts) {
+  const s = summary(ts), f = v => v == null ? null : +(+v).toFixed(2);
+  const bd = k => breakdown(ts, k).map(r => ({[k]: r.key, ops: r.n, wr: f(r.wr), exp: f(r.exp), rTotal: f(r.totalR ?? r.sumR ?? null)}));
+  const usable = ts.filter(t => t.win || t.loss || t.mfe_r != null).filter(t => mfeOf(t) != null);
+  const sim = [0.5, 0.8, 1, 1.2, 1.5, 2, 2.5, 3].map(T => { const w = usable.filter(t => mfeOf(t) >= T).length, n = usable.length; return {objetivo: T, ganadas: w, n, wr: n ? f(100 * w / n) : null, exp_R: n ? f(w / n * T - (1 - w / n)) : null}; });
+  const lift = confluenceLift(ts).map(r => ({confluencia: r.c, ops: r.n, wr_con: f(r.wrW), wr_sin: f(r.wrWo)}));
+  return `FILTROS ACTIVOS: mercado ${state.mercado || "todo"}, cuenta ${state.cuentaView || "todas"}${$("#j-pair")?.value ? ", par " + $("#j-pair").value : ""}.
+RESUMEN: ${JSON.stringify({ops: s.trades, ganadas: s.wins, perdidas: s.losses, wr: f(s.wr), rTotal: f(s.totalR), esperanza_R: f(s.exp), profit_factor: f(s.pf), max_drawdown_R: f(s.dd), plan_cumplido: f(s.plan)})}
+POR PAR: ${JSON.stringify(bd("pair"))}
+POR SESIÓN: ${JSON.stringify(bd("session"))}
+POR HORA: ${JSON.stringify(bd("hour"))}
+POR DÍA: ${JSON.stringify(bd("weekday"))}
+POR DIRECCIÓN: ${JSON.stringify(bd("direction"))}
+POR SETUP: ${JSON.stringify(bd("setup"))}
+POR TEMPORALIDAD: ${JSON.stringify(bd("timeframe"))}
+POR CUENTA: ${JSON.stringify(bd("cuenta"))}
+A FAVOR / EN CONTRA DEL SESGO: ${JSON.stringify(bd("aligned"))}
+CONFLUENCIAS (win rate con / sin): ${JSON.stringify(lift)}
+SIMULACIÓN DE OBJETIVOS con el recorrido máximo a favor (${usable.length} operaciones medidas): ${JSON.stringify(sim)}
+OPERACIONES (CSV): 
+${compactCSV(ts, 150)}`;
+}
+function nqPrompt(q, C, ts) {
+  const P = activeProfile(), hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
+  return `${COACH}
+Eres además un analista cuantitativo. El trader tiene TDAH: responde claro y ordenado (máximo 12 líneas), con CIFRAS CONCRETAS sacadas de los datos (win rate, R, esperanza por operación, profit factor, número de operaciones), y termina con una línea «Haz esto: …» con la acción más rentable en una frase.
+Reglas: usa SOLO los datos de abajo (no inventes números; si hace falta un cálculo, hazlo y enséñalo en una línea). Recuerda que esperanza = win rate × ganancia media − (1 − win rate) × pérdida media, y que más win rate no siempre es más beneficio. Avisa cuando un grupo tenga pocas operaciones (menos de 10) y no saques conclusiones fuertes con eso. Distingue Real de Backtest. Si preguntan por riesgo por operación, razona con el drawdown máximo y la racha de pérdidas, y recomienda un % prudente (0,5-1% por operación salvo que los datos justifiquen otra cosa).
+ESTRATEGIA DETECTADA: ${JSON.stringify(P ? {nombre: P.nombre, pasos: P.pasos, riesgo: P.riesgo} : {})}
+${statsContext(ts)}
+${hist ? "CONVERSACIÓN ANTERIOR:\n" + hist : ""}
+PREGUNTA DEL TRADER: ${q}
+Responde SOLO con un objeto JSON: {"respuesta":"texto en español; puedes usar saltos de línea y **negritas**"}`;
+}
+async function askStats(q) {
+  q = (q || "").trim(); if (!q) return;
+  const st = $("#nq-st"), btn = $("#nq-form button"), C0 = nqData(), pair = $("#j-pair").value;
+  const ts = state.trades.filter(t => !pair || t.pair === pair);
+  const C = {mensajes: [...(C0.mensajes || []), {rol: "yo", texto: q, at: new Date().toISOString()}].slice(-40), fijados: C0.fijados || []};
+  await saveStatsChat(C); $("#nq-txt").value = ""; btn.disabled = true; st.textContent = "La IA está haciendo números…";
+  try {
+    if (!state.sample) throw {code: "sampling_disabled"};
+    const r = await state.sample.json(nqPrompt(q, C0, ts), {modelTier: "complex"});
+    if (!r?.respuesta) throw {code: "invalid_json"};
+    await saveStatsChat({...C, mensajes: [...C.mensajes, {rol: "ia", texto: r.respuesta, at: new Date().toISOString()}].slice(-40)}); st.textContent = "";
+  } catch (e) {
+    if (["sampling_disabled", "not_declared"].includes(e.code) && col) {
+      try {
+        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", chat: "stats_chat", pregunta: q, filtros: {mercado: state.mercado || "todo", cuenta: state.cuentaView || "todas", par: pair || ""}, created: new Date().toISOString()});
+        const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha hecho una PREGUNTA SOBRE SUS NÚMEROS (win rate, R:R, rendimiento): contéstala lo primero."}); } catch {} }
+        st.textContent = "Pregunta enviada: la respuesta aparecerá aquí en 1-3 minutos."; return;
+      } catch {}
+    }
+    st.textContent = e.code === "invalid_json" ? "No pude generar la respuesta; prueba otra vez." : AI_ERR[e.code] || "No se pudo preguntar: " + (e.message || e.code);
+  } finally { btn.disabled = false; }
+}
+document.addEventListener("click", e => {
+  const q = e.target.closest("[data-nq]"); if (q) { askStats(q.dataset.nq); return; }
+  const pin = e.target.closest("[data-nq-pin]");
+  if (pin) { const C = nqData(), m = C.mensajes[+pin.dataset.nqPin]; if (m && !(C.fijados || []).includes(m.texto)) saveStatsChat({...C, fijados: [...(C.fijados || []), m.texto].slice(-10)}); return; }
+  const un = e.target.closest("[data-nq-unpin]");
+  if (un) { const C = nqData(); saveStatsChat({...C, fijados: (C.fijados || []).filter((_, i) => i !== +un.dataset.nqUnpin)}); }
+});
+$("#nq-form").addEventListener("submit", e => { e.preventDefault(); askStats($("#nq-txt").value); });
+$("#nq-txt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askStats($("#nq-txt").value); } });
 function renderJournal() {
   const pair = $("#j-pair").value;
   const ts = state.trades.filter(t => !pair || t.pair === pair);
-  renderSim(ts);
+  renderSim(ts); renderStatsChat();
   const ex = state.trades.filter(t => t.ejemplo).length;
   $("#j-example").hidden = !(ex || (state.loaded && !state.trades.length));
   $("#j-example").innerHTML = !state.trades.length ? `Todavía no hay operaciones. Tu win rate y tus estadísticas se calculan con lo que registres en <button class="btn" data-goto="operaciones">Mis operaciones</button>`
