@@ -3,7 +3,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: hoja de apuestas de una columna — barra de ajustes, jornada editable, combinada y una ficha por partido */
+/* Tema claro fijo a petición del usuario, también con el móvil en modo oscuro.
+   Layout: hoja de apuestas de una columna — barra de ajustes, jornada editable, combinada y una ficha por partido */
 :root {
   --bg: #eef2ee; --surface: #ffffff; --sunk: #f6f8f5; --ink: #13201a; --mute: #5a6a61; --line: #d9e1db;
   --pitch: #1b6a45; --pitch-soft: #e1efe6; --amber: #a8620c; --amber-soft: #fbf0df; --risk: #b42318;
@@ -11,15 +12,8 @@
   --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
-  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
-  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; } }
-:root[data-theme="dark"] {
-  --bg: #0d1411; --surface: #141e19; --sunk: #101914; --ink: #e4ebe6; --mute: #94a49b; --line: #25332b;
-  --pitch: #52c48e; --pitch-soft: #173326; --amber: #f0a64a; --amber-soft: #33240f; --risk: #f97066;
-  --bar: #3fae78; --bar-bg: #22302a; color-scheme: dark; }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -120,13 +114,19 @@ details[open] > summary { margin-bottom: 6px; }
 .bands-nav a { font: 600 14px var(--f-data); text-decoration: none; color: var(--pitch); background: var(--pitch-soft); border-radius: 99px; padding: 4px 12px; }
 .band-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .band-head .lvl { font: 700 40px var(--f-display); color: var(--pitch); line-height: 1; }
-.band-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.band-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 12px; }
 .bm { background: var(--sunk); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; min-width: 0; align-content: start; }
 .bm h3 { color: var(--ink); font-size: 15px; letter-spacing: .02em; text-transform: none; }
 .bm .when { font: 12px var(--f-data); color: var(--mute); }
 .ev { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px 10px; font-size: 13.5px; align-items: baseline; padding: 3px 0; border-top: 1px solid var(--line); }
 .ev .p { font: 600 13px var(--f-data); }
 .ev .o { font: 12px var(--f-data); color: var(--mute); }
+.src { background: var(--pitch-soft); border-radius: 8px; padding: 12px 14px; display: grid; gap: 6px; font-size: 14px; max-width: 85ch; }
+.ev { grid-template-columns: minmax(0, 1fr) auto auto 74px; }
+.ev input { width: 74px; padding: 3px 6px; font: 12px var(--f-data); background: var(--surface); }
+.ev .verdict { grid-column: 1 / -1; font: 600 12px var(--f-body); }
+.ev .verdict.yes { color: var(--pitch); }
+.ev .verdict.no { color: var(--risk); }
 .ev .hs { grid-column: 1 / -1; font: 11.5px var(--f-data); color: var(--mute); }
 
 /* combinadas del día */
@@ -173,6 +173,10 @@ svg text { fill: var(--mute); font: 11px var(--f-data); }
     <div class="panel">
       <div class="mtitle"><h2 id="today-title">Lo más probable hoy</h2>
         <label class="f" for="today-sel" style="min-width:220px">Día<select id="today-sel"></select></label></div>
+      <div class="src">
+        <p><b>De dónde sale la probabilidad:</b> la calcula el modelo con 8.908 partidos reales de 5 temporadas. Pesa más de un 75 % la fuerza de ataque y defensa de cada equipo contra todos sus rivales y menos de un 25 % lo que más ha pasado con estos dos equipos: últimos 10 en casa del local, últimos 10 fuera del visitante y enfrentamientos directos (a medio peso). <b>No usa las cuotas de Winamax ni de ninguna casa.</b></p>
+        <p>Escribe la cuota de Winamax en la casilla de cada suceso y la página te dice si compensa: hace falta que pague al menos la cuota de «pide». Las tarjetas cuentan cada amarilla y cada roja como 1; revisa cómo las cuenta Winamax en ese mercado.</p>
+      </div>
       <p class="mute" id="today-info"></p>
       <div class="bands-nav" id="bands-nav"></div>
     </div>
@@ -203,9 +207,9 @@ svg text { fill: var(--mute); font: 11px var(--f-data); }
         <label class="f" for="add-lg">Liga<select id="add-lg"></select></label>
         <label class="f" for="add-h">Local<select id="add-h"></select></label>
         <label class="f" for="add-a">Visitante<select id="add-a"></select></label>
-        <label class="f odds" for="add-o1">Cuota 1<input type="number" id="add-o1" step="0.01" min="1" placeholder="opc."></label>
-        <label class="f odds" for="add-ox">Cuota X<input type="number" id="add-ox" step="0.01" min="1" placeholder="opc."></label>
-        <label class="f odds" for="add-o2">Cuota 2<input type="number" id="add-o2" step="0.01" min="1" placeholder="opc."></label>
+        <label class="f odds" for="add-o1">Winamax 1<input type="number" id="add-o1" step="0.01" min="1" placeholder="opc."></label>
+        <label class="f odds" for="add-ox">Winamax X<input type="number" id="add-ox" step="0.01" min="1" placeholder="opc."></label>
+        <label class="f odds" for="add-o2">Winamax 2<input type="number" id="add-o2" step="0.01" min="1" placeholder="opc."></label>
         <button class="btn" id="add">Añadir partido</button>
       </div>
       <div id="msg" hidden></div>
@@ -251,10 +255,11 @@ svg text { fill: var(--mute); font: 11px var(--f-data); }
   <section id="pane-how" hidden>
     <div class="panel prose">
       <h2>Cómo calcula</h2>
+      <p><b>La probabilidad la calcula el modelo con datos históricos reales.</b> Las cuotas de Winamax o de cualquier casa no entran en el cálculo: solo se usan después para comparar y ver si una apuesta tiene valor.</p>
       <ol>
         <li><b>Modelo Dixon-Coles por liga.</b> Estima el ataque y la defensa de cada equipo y la ventaja de jugar en casa con las últimas 5 temporadas. Los partidos recientes pesan más (vida media de un año) y los equipos con pocos datos, como los recién ascendidos, se acercan a una media algo peor. Se ajusta igual para goles, goles al descanso, córners y tarjetas (amarillas + rojas). En córners y tarjetas se añade más variabilidad, porque se dispersan más que los goles.</li>
         <li><b>Lo que más se ha repetido.</b> Cuenta cuántas veces se cumplió cada mercado en los últimos 10 partidos en casa del local, los últimos 10 fuera del visitante y los enfrentamientos directos.</li>
-        <li><b>Probabilidad final</b> = (veces que pasó + 100 × probabilidad del modelo) ÷ (partidos + 100). Con 10 partidos hay mucha casualidad, y el backtest muestra que las rachas solas aciertan peor que el modelo; por eso pesan poco pero se enseñan.</li>
+        <li><b>Probabilidad final</b> = (veces que pasó + 100 × probabilidad del modelo) ÷ (partidos + 100). Con unos 25 partidos de histórico, el modelo pesa algo más del 75 % y lo que más ha pasado con estos dos equipos algo menos del 25 %; los enfrentamientos directos cuentan como medio partido cada uno. Con 10 partidos hay mucha casualidad, y el backtest muestra que las rachas solas aciertan peor que el modelo; por eso pesan poco pero se enseñan.</li>
         <li><b>Picks.</b> Mercados por encima de la probabilidad mínima, con cuota justa dentro del rango y con el histórico de acuerdo. De cada familia (líneas de goles, de córners…) se queda la línea más exigente que sigue pasando el filtro, que es la que mejor paga.</li>
         <li><b>Cuota justa</b> = 1 ÷ probabilidad. <b>Cuota mínima</b> = justa + 3 %. Si la casa paga menos que la mínima, no hay valor y no conviene apostar.</li>
       </ol>
@@ -745,6 +750,7 @@ svg text { fill: var(--mute); font: 11px var(--f-data); }
   if (store.get("fut_fx_version", null) !== FIXTURES.version || !jornada || (jornada.length && jornada.every((m) => m.example))) {
     jornada = FIXTURES.matches.length ? FIXTURES.matches.map((m) => ({ ...m })) : EXAMPLE;
     store.set("fut_fx_version", FIXTURES.version);
+    store.set("fut_jornada", jornada);
   }
   const settings = Object.assign({ minp: 0.62, maxo: 2.10, mino: 1.25, dayOdds: 3, day: null }, store.get("fut_settings", {}));
   const save = () => { store.set("fut_jornada", jornada); store.set("fut_settings", settings); };
@@ -845,7 +851,7 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
       { t: "Prob.", f: (r) => meter(r.p) },
       { t: "Cuota justa", n: 1, f: (r) => odd(r.fair) },
       { t: "Cuota mínima", n: 1, f: (r) => odd(r.min) },
-      { t: "Casa", n: 1, f: (r) => r.book ? el("span", { class: r.value > 0.03 ? "val" : r.value < 0 ? "val neg" : "", text: `${odd(r.book)} (${r.value >= 0 ? "+" : ""}${Math.round(r.value * 100)}%)` }) : "—" },
+      { t: "Cuota casa", n: 1, f: (r) => r.book ? el("span", { class: r.value > 0.03 ? "val" : r.value < 0 ? "val neg" : "", text: `${odd(r.book)} (${r.value >= 0 ? "+" : ""}${Math.round(r.value * 100)}%)` }) : "—" },
       { t: "Local en casa", cls: "h", f: (r) => hist(r, "home") },
       { t: "Visit. fuera", cls: "h", f: (r) => hist(r, "away") },
       { t: "H2H", cls: "h", f: (r) => hist(r, "h2h") },
@@ -975,8 +981,36 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
   // ---- lo más probable hoy: eventos por tramos de probabilidad ---------------------------
   const BANDS = [0.9, 0.8, 0.7, 0.6, 0.5];
   const localToday = () => { const n = new Date(); return Math.round((Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) - EPOCH) / 864e5); };
+  // Cuota de Winamax escrita por el usuario para un suceso concreto, comparada con la cuota mínima
+  let wmx = store.get("fut_winamax", {});
+  function winamaxInput(m, r) {
+    const key = [m.lg, m.home, m.away, m.day, r.id].join("|");
+    const id = "wmx-" + key.replace(/[^A-Za-z0-9]/g, "_");
+    const inp = el("input", { type: "number", step: "0.01", min: "1", id, placeholder: "Winamax", "aria-label": `Cuota Winamax: ${r.label}` });
+    const out = el("span", { class: "verdict" });
+    const show = () => {
+      const o = num(inp.value);
+      out.hidden = !(o > 1);
+      if (!(o > 1)) return;
+      const v = r.p * o - 1;
+      out.className = "verdict " + (o >= r.min ? "yes" : "no");
+      out.textContent = o >= r.min ? `✓ Compensa: ventaja ${v >= 0 ? "+" : ""}${Math.round(v * 100)}%` : `✗ No compensa: Winamax paga menos que la cuota mínima (${odd(r.min)})`;
+    };
+    if (wmx[key]) inp.value = wmx[key];
+    inp.addEventListener("input", () => { const o = num(inp.value); if (o > 1) wmx[key] = o; else delete wmx[key]; store.set("fut_winamax", wmx); show(); });
+    show();
+    queueMicrotask(() => inp.parentElement && inp.parentElement.append(out));
+    return inp;
+  }
+
   function renderToday() {
-    const sel = $("today-sel"), days = [...new Set(jornada.filter((m) => m.day != null).map((m) => m.day))].sort((a, b) => a - b);
+    // Partidos publicados + los que el usuario haya añadido con fecha (sin duplicados)
+    const seenFx = new Set(), all = [];
+    for (const m of [...FIXTURES.matches, ...jornada]) {
+      const k = m.lg + "|" + m.home + "|" + m.away + "|" + m.day;
+      if (m.day != null && !seenFx.has(k)) { seenFx.add(k); all.push(m); }
+    }
+    const sel = $("today-sel"), days = [...new Set(all.map((m) => m.day))].sort((a, b) => a - b);
     sel.replaceChildren();
     const dayName = (d) => { const t = localToday(); return (d === t ? "Hoy · " : d === t + 1 ? "Mañana · " : "") + dayToDate(d).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }); };
     days.forEach((d) => sel.append(el("option", { value: String(d), text: dayName(d) })));
@@ -985,7 +1019,7 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
     if (!days.includes(day)) day = days.find((d) => d >= localToday()) ?? days[days.length - 1];
     sel.value = String(day);
     $("today-title").textContent = day === localToday() ? "Lo más probable hoy" : "Lo más probable el " + dayToDate(day).toLocaleDateString("es-ES", { weekday: "long", day: "numeric", timeZone: "UTC" });
-    const ms = jornada.filter((m) => m.day === day && league(m.lg)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const ms = all.filter((m) => m.day === day && league(m.lg)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
     const preds = ms.map((m) => ({ m, p: league(m.lg).predict(m.home, m.away, m.odds) }));
     const warn = preds.flatMap(({ p }) => p.warnings);
     $("today-info").textContent = `${preds.length} partidos. Cada tramo reúne lo que el modelo da entre ese porcentaje y el siguiente (el de 90 %, todo lo que pasa de 90 %). De cada tipo de mercado se muestra solo la línea más exigente del tramo, que es la que mejor paga.` + (warn.length ? " ⚠ " + warn.join(" ") : "");
@@ -1005,6 +1039,7 @@ Escribe 4-6 frases: qué tipo de partido esperan los números, por qué los pick
         const card = el("div", { class: "bm" }, el("h3", { text: `${p.home} – ${p.away}` }), el("span", { class: "when", text: [m.time, NAMES[m.lg] || m.lg].filter(Boolean).join(" · ") }));
         evs.forEach((r) => card.append(el("div", { class: "ev" }, el("span", { text: r.label }), el("span", { class: "p", text: pct(r.p) }),
           el("span", { class: "o", text: "pide " + odd(r.min) }),
+          winamaxInput(m, r),
           el("span", { class: "hs", text: `en casa ${hist(r, "home")} · fuera ${hist(r, "away")} · H2H ${hist(r, "h2h")}` }))));
         grid.append(card);
       }
