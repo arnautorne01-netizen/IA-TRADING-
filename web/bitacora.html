@@ -534,7 +534,7 @@ details summary{cursor:pointer;font-weight:600}
   <!-- ====================== MI ESTRATEGIA ====================== -->
   <section class="view" id="view-estrategia" hidden>
     <div class="panel-head">
-      <div><div class="label">Detectada a partir de tus operaciones</div><h2 id="s-name">Mi estrategia</h2></div>
+      <div><div class="label" id="s-mk-label">Detectada a partir de tus operaciones</div><h2 id="s-name">Mi estrategia</h2><div class="seg" id="s-mk" role="group" aria-label="Estrategia de qué mercado"></div></div>
       <div class="row"><button class="btn primary" id="s-go" data-ai>Detectar mi estrategia con IA</button><button class="btn" id="s-stop" hidden>Parar</button></div>
     </div>
     <div id="s-few" class="banner" hidden></div>
@@ -910,7 +910,16 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profile: null, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
+const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profiles: {fx: null, fut: null}, stratChats: {fx: null, fut: null}, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
+// Una estrategia (y su conversación) por mercado: Forex y Futuros
+const MK_LBL = {fx: "Forex", fut: "Futuros"};
+const mkOf = pair => INS(pair)?.grupo === "fut" ? "fut" : "fx";
+const curMk = () => state.profMk || (state.mercado === "fut" ? "fut" : "fx");
+const PROF_DOC = mk => mk === "fut" ? "strategy_profile_fut" : "strategy_profile";
+const CHAT_DOC = mk => mk === "fut" ? "strategy_chat_fut" : "strategy_chat";
+const mkTrades = (mk = curMk(), all = false) => (all ? state.allTrades || [] : state.trades).filter(t => mkOf(t.pair) === mk);
+Object.defineProperty(state, "profile", {get: () => state.profiles[curMk()], set: v => { state.profiles[curMk()] = v; }});
+Object.defineProperty(state, "stratChat", {get: () => state.stratChats[curMk()], set: v => { state.stratChats[curMk()] = v; }});
 let col = null;
 
 async function boot() {
@@ -941,12 +950,11 @@ async function boot() {
     state.pendingDeep = new Set(snap.docs.filter(d => d.data()?.kind === "pending_deep").map(d => d.data().trade_id));
     state.checks = snap.docs.filter(d => ["check_result", "pending_check"].includes(d.data()?.kind)).map(d => ({id: d.id, ...d.data()})).sort((a, b) => String(b.created).localeCompare(String(a.created)));
     renderChecks();
-    const sc = snap.docs.find(d => d.id === "strategy_chat"); if (sc) state.stratChat = sc.data();
+    for (const mk of ["fx", "fut"]) { const sc = snap.docs.find(d => d.id === CHAT_DOC(mk)); if (sc) state.stratChats[mk] = sc.data(); }
     const nc = snap.docs.find(d => d.id === "stats_chat"); if (nc) state.statsChat = nc.data();
     const mj = snap.docs.find(d => d.id === "improvements"); state.mejoras = mj ? mj.data() : null; renderMejoras();
     state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
-    const prof = snap.docs.find(d => d.id === "strategy_profile");
-    state.profile = prof ? prof.data() : null;
+    for (const mk of ["fx", "fut"]) { const prof = snap.docs.find(d => d.id === PROF_DOC(mk)); state.profiles[mk] = prof ? prof.data() : null; }
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
@@ -2252,7 +2260,7 @@ function renderOps() {
     {h: "Fecha", f: t => (t.fecha_estimada ? "≈ " : "") + t.date + (t.time ? " " + t.time : "")}, {h: "Cuenta", html: 1, f: t => cuentaPill(t)}, {h: "Operación", f: t => `${t.pair} ${t.direction}`}, {h: "Sesión", f: t => t.session},
     {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
     {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
-    {h: "Encaje", n: 1, html: 1, f: t => { const f = P ? fitScore(t, P).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
+    {h: "Encaje", n: 1, html: 1, f: t => { const TP = activeProfile(t.pair), f = TP ? fitScore(t, TP).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
     {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap" data-shots="${esc(t.shots.join(","))}">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<a href="/_blob/${esc(t.shots[3])}" class="small muted" data-lb-i="3">+${t.shots.length - 3}</a>` : ""}</span>`},
     {h: "Análisis", html: 1, f: t => (t.deep_analysis ? `<button class="btn" data-deep-open="${esc(t.id)}"><span class="pill ${deepGradeCls(t.deep_analysis.nota)}">${esc(t.deep_analysis.nota || "?")}</span> Ver</button>` : state.pendingDeep?.has(t.id) ? `<span class="pill warn">En cola</span>` : t.shots.length ? `<button class="btn" data-deep-run="${esc(t.id)}">Análisis a fondo</button>` : "") + ` <button class="btn small" data-rev-open="${esc(t.id)}" title="Comenta un error o una mejora y la IA te dice si tienes razón">💬 ${t.revisiones?.length ? "Comentarios (" + t.revisiones.length + ")" : "Comentar"}</button>`},
@@ -2546,6 +2554,8 @@ document.querySelectorAll("#mercado-seg [data-mercado]").forEach(b => b.addEvent
   applyMercado(); renderAll();
 }));
 applyMercado();
+// En «Mi estrategia», elegir Forex o Futuros cambia el mercado de toda la página
+document.addEventListener("click", e => { const b = e.target.closest("[data-s-mk]"); if (b) document.querySelector(`#mercado-seg [data-mercado="${b.dataset.sMk}"]`)?.click(); });
 
 // =====================================================================
 // Análisis a fondo, paso a paso, de cada operación
@@ -2562,7 +2572,7 @@ const DEEP_SCHEMA = `"analisis_profundo":{"nota":"A+|A|B|C|D","puntuacion":0-100
 const DEEP_GUIDE = `ANÁLISIS A FONDO: como un mentor de Smart Money / ICT que corrige a su alumno, revisa la operación paso a paso. Lee TODAS las etiquetas y zonas que el trader ha dibujado (OB, FVG, iFVG, BOS, CHoCH, liquidez, mínimos/máximos de Asia, temporalidad de cada zona) y úsalas. Sé exigente y concreto: cita precios, horas y velas; di si el stop está protegido por estructura o expuesto a un barrido, si la zona es de calidad (frescura, desplazamiento, temporalidad), si hubo confirmación real antes de entrar, si el R:R compensa y si el momento (sesión, noticias, hora) era bueno. La puntuación juzga el PROCESO, no el resultado: una ganadora mal ejecutada puede sacar C y una perdedora bien ejecutada puede sacar A.`;
 function deepPrompt(t) {
   return `${COACH}
-${stratTxt()}
+${stratTxt(t.pair)}
 Te paso la imagen o imágenes de UNA operación del trader en EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500).
 ${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes})}` : ""}
 ${RULE_TEXT}
@@ -2635,7 +2645,7 @@ function revSection(t) {
     </form>`;
 }
 function revPrompt(t, comentario) {
-  const P = activeProfile();
+  const P = activeProfile(t.pair);
   return `${COACH}
 El trader tiene TDAH: sé claro, ordenado y concreto; nada de rodeos.
 Revisa SU comentario sobre una operación ya hecha. Mira las capturas con atención (regla de la herramienta de posición: zona NARANJA = stop loss, zona AZUL = take profit, la línea entre las dos = entrada) y dile con honestidad si su comentario es correcto: "Bien visto" si acierta, "En parte" si tiene algo de razón pero hay más, "No era un error" si lo que señala estaba bien hecho (explica por qué). Si ves otro error más importante que no ha mencionado, díselo también en la valoración. Juzga el PROCESO, no el resultado. Usa su estrategia como referencia.
@@ -2690,7 +2700,7 @@ Mira las capturas (zona NARANJA = stop loss, zona AZUL = take profit, línea ent
 OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences})}
 ANÁLISIS A FONDO ACTUAL: ${D ? JSON.stringify({nota: D.nota, puntuacion: D.puntuacion, pasos: (D.pasos || []).map(p => ({paso: p.paso, valoracion: p.valoracion, nota: p.nota}))}) : "NO EXISTE (ajustar_puntuacion debe ser false)"}
 SU LISTA ACTUAL DE COSAS QUE MEJORAR: ${JSON.stringify((state.mejoras?.items || []).filter(i => !i.hecho).map(i => i.texto))}
-ESTRATEGIA DEL TRADER: ${JSON.stringify((p => p ? {nombre: p.nombre, pasos: p.pasos, checklist: p.checklist, reglas: p.reglas} : {})(activeProfile()))}
+ESTRATEGIA DEL TRADER EN ${MK_LBL[mkOf(t.pair)].toUpperCase()}: ${JSON.stringify((p => p ? {nombre: p.nombre, pasos: p.pasos, checklist: p.checklist, reglas: p.reglas} : {})(activeProfile(t.pair)))}
 ${(t.revisiones || []).filter(r => r.respuesta).length ? "CONVERSACIÓN ANTERIOR SOBRE ESTA OPERACIÓN: " + JSON.stringify(t.revisiones.filter(r => r.respuesta).slice(-6).map(r => ({trader: r.comentario, ia: r.respuesta.respuesta || r.respuesta.valoracion}))) : ""}
 MENSAJE DEL TRADER: «${comentario}»
 Responde SOLO con un objeto JSON con esta forma: ${ACT_SCHEMA}`;
@@ -2854,18 +2864,20 @@ $("#o-table").addEventListener("click", async e => {
 // Mi estrategia
 // =====================================================================
 // Perfil mínimo calculado con los datos, para cuando aún no hay perfil de IA
-function localProfile() {
-  if (state.trades.filter(t => t.win || t.loss).length < 5) return null;
-  const dec = state.trades.filter(t => t.win || t.loss);
+function localProfile(mk = curMk()) {
+  const ts = mkTrades(mk);
+  if (ts.filter(t => t.win || t.loss).length < 5) return null;
+  const dec = ts.filter(t => t.win || t.loss);
   const overall = 100 * dec.filter(t => t.win).length / dec.length;
   return {
-    confluencias_clave: checklist(state.trades).slice(0, 4),
-    sesiones: breakdown(state.trades, "session", 3).filter(r => (r.wr ?? 0) >= overall).map(r => r.key),
-    setups: breakdown(state.trades, "setup", 3).filter(r => (r.exp ?? 0) > 0).map(r => r.key),
+    confluencias_clave: checklist(ts).slice(0, 4),
+    sesiones: breakdown(ts, "session", 3).filter(r => (r.wr ?? 0) >= overall).map(r => r.key),
+    setups: breakdown(ts, "setup", 3).filter(r => (r.exp ?? 0) > 0).map(r => r.key),
     local: true,
   };
 }
-function activeProfile() { return state.profile?.confluencias_clave ? state.profile : localProfile(); }
+// Con instrumento: la estrategia de su mercado; sin él, la del mercado que se está viendo
+function activeProfile(pair) { const mk = pair ? mkOf(pair) : curMk(), P = state.profiles[mk]; return P?.confluencias_clave ? P : localProfile(mk); }
 // Encaje 0-100 de una operación con el perfil de estrategia
 function fitScore(t, P) {
   const parts = [];
@@ -2879,7 +2891,7 @@ function fitScore(t, P) {
   return {score: Math.round(100 * parts.reduce((a, p) => a + p[0] * p[1], 0) / w), ok: parts.filter(p => p[1] >= .5).map(p => p[2]), ko: parts.filter(p => p[1] < .5).map(p => p[2])};
 }
 function showFit(t) {
-  const P = activeProfile(), box = $("#t-fit");
+  const P = activeProfile(t.pair), box = $("#t-fit");
   if (!P) { box.hidden = true; return; }
   const f = fitScore(t, P);
   box.hidden = false;
@@ -2936,14 +2948,15 @@ function renderStratChat() {
     : `<p class="small muted" style="margin:0">Pregunta lo que quieras sobre tu estrategia: cómo entras, dónde va el stop, qué confluencias importan, cuándo no operar… Las respuestas se guardan aquí y puedes fijar las importantes arriba como recordatorio.</p>`;
   log.scrollTop = log.scrollHeight;
 }
-async function saveStratChat(C) { state.stratChat = C; renderStratChat(); if (col) { try { await col.doc("strategy_chat").set({kind: "strategy_chat", ...C}); } catch {} } }
+async function saveStratChat(C, mk = curMk()) { state.stratChats[mk] = C; renderStratChat(); if (col) { try { await col.doc(CHAT_DOC(mk)).set({kind: CHAT_DOC(mk), mercado: mk, ...C}); } catch {} } }
 function sqPrompt(q, C) {
   const P = activeProfile(), hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
   return `${COACH}
 El trader tiene TDAH y se le olvidan los detalles de su propia estrategia: contesta CORTO y CLARO (máximo 8 líneas), con pasos numerados o viñetas cuando ayude, sin rodeos, y termina con una línea «Recuerda: …» con lo más importante en una frase. Usa SOLO su estrategia detectada y sus operaciones; si algo no está en los datos, dilo y no lo inventes.
 ESTRATEGIA DETECTADA: ${JSON.stringify(P || {})}
-OPERACIONES (CSV, columna cuenta = Real o Backtest): 
-${compactCSV(state.allTrades || state.trades, 120)}
+MERCADO: ${MK_LBL[curMk()]} (el trader tiene una estrategia distinta para cada mercado; habla solo de esta).
+OPERACIONES DE ${MK_LBL[curMk()].toUpperCase()} (CSV, columna cuenta = Real o Backtest): 
+${compactCSV(mkTrades(curMk(), true), 120)}
 ${hist ? "CONVERSACIÓN ANTERIOR:\n" + hist : ""}
 PREGUNTA DEL TRADER: ${q}
 Responde SOLO con un objeto JSON: {"respuesta":"texto en español; puedes usar saltos de línea y **negritas**"}`;
@@ -2961,7 +2974,7 @@ async function askStrategy(q) {
   } catch (e) {
     if (["sampling_disabled", "not_declared"].includes(e.code) && col) {
       try {
-        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", pregunta: q, created: new Date().toISOString()});
+        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", mercado: curMk(), pregunta: q, created: new Date().toISOString()});
         const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha hecho una PREGUNTA SOBRE SU ESTRATEGIA: contéstala lo primero."}); } catch {} }
         st.textContent = "Pregunta enviada: la respuesta aparecerá aquí en 1-3 minutos."; return;
       } catch {}
@@ -2988,8 +3001,9 @@ Cómo decidir (con criterio, sin darle la razón por complacerle):
 Campos que puedes cambiar (usa EXACTAMENTE estos nombres): ${Object.keys(FIX_LBL).join(", ")}. En "despues" pon el valor COMPLETO nuevo del campo: si es una lista, la lista entera ya corregida (la "checklist" con 6-8 comprobaciones sí/no medibles); si es texto, el texto entero. No cambies lo que no haga falta.
 ESTRATEGIA DETECTADA AHORA: ${JSON.stringify(P)}
 ${prevFix ? "CORRECCIONES ANTERIORES DEL TRADER (ya aplicadas):\n" + prevFix : ""}
-OPERACIONES (CSV, columna cuenta = Real o Backtest):
-${compactCSV(state.allTrades || state.trades, 120)}
+MERCADO: ${MK_LBL[curMk()]} (el trader tiene una estrategia distinta para cada mercado; corrige solo esta).
+OPERACIONES DE ${MK_LBL[curMk()].toUpperCase()} (CSV, columna cuenta = Real o Backtest):
+${compactCSV(mkTrades(curMk(), true), 120)}
 ${hist ? "CONVERSACIÓN ANTERIOR:\n" + hist : ""}
 LO QUE DICE EL TRADER: «${txt}»
 Responde SOLO con un objeto JSON: {"veredicto":"tienes_razon|parcial|los_datos_dicen_otra_cosa|pregunta","respuesta":"texto en español para el trader: qué has entendido, qué has cambiado (o por qué no) y la respuesta a lo que pregunte; puedes usar saltos de línea y **negritas**","cambios":[{"campo":"nombre del campo","despues":"valor nuevo completo (texto o lista)","motivo":"1 frase"}]}`;
@@ -3007,7 +3021,7 @@ async function applyFix(r, texto) {
   P.correcciones = [...(P.correcciones || []), {id, texto, veredicto: r.veredicto || "", campos, prev, at: new Date().toISOString()}].slice(-30);
   if (campos.length) P.ajustado = todayISO();
   if (!P.kind) P.kind = "profile";
-  state.profile = P; if (col) { try { await col.doc("strategy_profile").set(P); } catch {} }
+  state.profile = P; if (col) { try { await col.doc(PROF_DOC(curMk())).set(P); } catch {} }
   return id;
 }
 async function undoFix(id) {
@@ -3015,7 +3029,7 @@ async function undoFix(id) {
   if (!c || c.deshecha) return;
   for (const [f, v] of Object.entries(c.prev || {})) setF(P, f, v);
   P.correcciones = P.correcciones.map(x => x.id === id ? {...x, deshecha: true} : x);
-  state.profile = P; if (col) { try { await col.doc("strategy_profile").set(P); } catch {} }
+  state.profile = P; if (col) { try { await col.doc(PROF_DOC(curMk())).set(P); } catch {} }
   renderStrategy();
 }
 async function fixStrategy(txt) {
@@ -3033,7 +3047,7 @@ async function fixStrategy(txt) {
   } catch (e) {
     if (["sampling_disabled", "not_declared"].includes(e.code) && col) {
       try {
-        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", modo: "correccion", pregunta: txt, created: new Date().toISOString()});
+        await col.doc("question_" + Date.now().toString(36)).set({kind: "pending_question", modo: "correccion", mercado: curMk(), pregunta: txt, created: new Date().toISOString()});
         const mcp = await use("mcp"); if (mcp) { try { await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: PROCESS_TRIGGER, text: "El trader ha CORREGIDO SU ESTRATEGIA: atiéndelo lo primero."}); } catch {} }
         st.textContent = "Corrección enviada: la respuesta y los cambios aparecerán aquí en 1-3 minutos."; return;
       } catch {}
@@ -3055,10 +3069,13 @@ document.addEventListener("click", e => {
 $("#sq-form").addEventListener("submit", e => { e.preventDefault(); askStrategy($("#sq-txt").value); });
 $("#sq-txt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askStrategy($("#sq-txt").value); } });
 function renderStrategy() {
-  const ts = state.trades, dec = ts.filter(t => t.win || t.loss), P = state.profile;
+  const ts = mkTrades(), dec = ts.filter(t => t.win || t.loss), P = state.profile, mk = curMk();
+  $("#s-mk-label").textContent = `Estrategia de ${MK_LBL[mk]} · ${mk === "fut" ? "Nasdaq 100 y S&P 500" : "EURUSD, GBPUSD y DXY"}`;
+  $("#s-mk").innerHTML = ["fx", "fut"].map(k => `<button type="button" data-s-mk="${k}" aria-pressed="${k === mk}">${MK_LBL[k]}${state.profiles[k] ? "" : " <span class=\"muted\">(sin detectar)</span>"}</button>`).join("");
   const few = $("#s-few");
   few.hidden = dec.length >= 20;
-  few.innerHTML = !ts.length ? `Suelta la captura de una operación en «Mis operaciones» y la IA detectará tu estrategia sola. <button class="btn" data-goto="operaciones">Subir capturas</button>`
+  if (state.mercado === "todo") $("#s-mk-label").textContent += " · en «Todo» se ve la de Forex";
+  few.innerHTML = !ts.length ? `Aún no tienes operaciones de ${MK_LBL[mk]}. Suelta la captura de una operación en «Mis operaciones» y la IA detectará esta estrategia sola. <button class="btn" data-goto="operaciones">Subir capturas</button>`
     : dec.length < 10 ? `Llevas ${ts.length} ${ts.length === 1 ? "operación" : "operaciones"}. La IA ya puede describir tu estrategia a partir de ${ts.length === 1 ? "ella y su imagen" : "ellas y sus imágenes"} (detección preliminar). Para saber qué te funciona y qué no, con estadística, hacen falta 10-20 o más.`
     : `Llevas ${dec.length} operaciones cerradas: la IA ya puede detectar tu estrategia, y será más precisa a partir de 20-30.`;
   $("#s-go").disabled = !state.sample || !ts.length;
@@ -3120,7 +3137,7 @@ async function shotBlobs(ts, max) {
 let stratCtl;
 $("#s-go").addEventListener("click", () => detectStrategy());
 async function detectStrategy() {
-  const ts = state.trades, dec = ts.filter(t => t.win || t.loss);
+  const ts = mkTrades(), dec = ts.filter(t => t.win || t.loss);
   const D = diagnose(ts), s = summary(ts), lift = confluenceLift(ts);
   const bd = k => breakdown(ts, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
   const names = arr => [...new Set(arr.filter(Boolean))].join(" | ");
@@ -3133,7 +3150,7 @@ async function detectStrategy() {
   } catch {}
   const prompt = `${COACH}
 
-Tu tarea: detectar la ESTRATEGIA real de este trader a partir de su journal: qué hace realmente (no lo que dice que hace), en qué condiciones gana y en cuáles pierde, y sus puntos clave. Basa cada afirmación en los datos y cita cifras (WR, R, nº de operaciones).
+Tu tarea: detectar la ESTRATEGIA real de este trader en ${MK_LBL[curMk()].toUpperCase()} (${curMk() === "fut" ? "futuros de índices: Nasdaq 100 y S&P 500" : "divisas: EURUSD, GBPUSD y DXY"}) a partir de su journal. Tiene una estrategia DISTINTA para el otro mercado: aquí solo cuentan estas operaciones. Detecta: qué hace realmente (no lo que dice que hace), en qué condiciones gana y en cuáles pierde, y sus puntos clave. Basa cada afirmación en los datos y cita cifras (WR, R, nº de operaciones).
 ${ts.some(t => t.ejemplo) ? "AVISO: parte de las operaciones son de ejemplo (inventadas)." : ""}
 ${ts.length < 10 ? `IMPORTANTE: solo hay ${ts.length} ${ts.length === 1 ? "operación" : "operaciones"}. Haz una detección PRELIMINAR: describe la estrategia que se ve en ${ts.length === 1 ? "esa operación" : "esas operaciones"} y en sus imágenes (contexto, modelo de entrada, confluencias, colocación de stop y objetivo, gestión). No inventes estadísticas; pon confianza "baja" y en puntos_clave indica qué datos debe registrar para confirmarla.` : ""}
 ${images.length ? `Te adjunto ${images.length} imágenes de gráfico de sus operaciones: ${images.map((x, i) => `imagen ${i + 1} = ${x.t.date} ${x.t.pair} ${x.t.direction} ${x.t.result || ""} ${fmtR(x.t.r)}`).join("; ")}. Míralas con atención: estructura, zonas, liquidez, FVG/order blocks, dónde entra, dónde pone el stop y el objetivo. Úsalas para describir su modelo de entrada.` : ""}
@@ -3167,9 +3184,9 @@ Responde SOLO con un objeto JSON con esta forma (todo en español; en confluenci
   try {
     const prof = await state.sample.json(prompt, {modelTier: "complex", signal: stratCtl.signal, images: images.length ? images.map(x => x.blob) : undefined});
     if (!prof || typeof prof !== "object" || !prof.resumen) throw {code: "invalid_json"};
-    const doc = {...prof, kind: "profile", fecha: todayISO(), operaciones_analizadas: ts.length, correcciones: state.profile?.correcciones || []};
+    const doc = {...prof, kind: "profile", mercado: curMk(), fecha: todayISO(), operaciones_analizadas: ts.length, correcciones: state.profile?.correcciones || []};
     state.profile = doc;
-    if (col) await col.doc("strategy_profile").set(doc);
+    if (col) await col.doc(PROF_DOC(curMk())).set(doc);
     renderStrategy();
     return true;
   } catch (e) {
@@ -3178,7 +3195,7 @@ Responde SOLO con un objeto JSON con esta forma (todo en español; en confluenci
   } finally { $("#s-stop").hidden = true; $("#s-go").disabled = false; }
 }
 $("#s-stop").addEventListener("click", () => stratCtl?.abort());
-const stratTxt = () => state.profile ? `\nESTRATEGIA DETECTADA DEL TRADER: ${JSON.stringify({nombre: state.profile.nombre, resumen: state.profile.resumen, confluencias_clave: state.profile.confluencias_clave, sesiones: state.profile.sesiones, setups: state.profile.setups, checklist: state.profile.checklist})}\n` : "";
+const stratTxt = pair => { const mk = pair ? mkOf(pair) : curMk(), P = state.profiles[mk]; return P ? `\nESTRATEGIA DETECTADA DEL TRADER EN ${MK_LBL[mk].toUpperCase()} (tiene otra distinta para ${MK_LBL[mk === "fx" ? "fut" : "fx"]}): ${JSON.stringify({nombre: P.nombre, resumen: P.resumen, confluencias_clave: P.confluencias_clave, sesiones: P.sesiones, setups: P.setups, checklist: P.checklist})}\n` : ""; };
 
 // =====================================================================
 // Patrones de comportamiento
