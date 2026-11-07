@@ -99,6 +99,16 @@ ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .verdict{font:700 1.3rem var(--f-body);padding:6px 14px;border-radius:999px;display:inline-block}
 .verdict.up{background:var(--up);color:#fff}.verdict.warn{background:#d69e2e;color:#fff}.verdict.down{background:var(--down);color:#fff}
 .ck td:first-child{width:28px;text-align:center}
+.sw-week{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:0}
+.sw-week>summary{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;padding:12px 16px;list-style:none}
+.sw-week>summary::-webkit-details-marker{display:none}
+.sw-week>summary::before{content:"▸";color:var(--muted)} .sw-week[open]>summary::before{content:"▾"}
+.sw-week>summary h3{font-size:1.1rem}
+.sw-body{display:flex;flex-direction:column;gap:14px;padding:0 16px 16px}
+.sw-hours{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px}
+.sw-hours div{border:1px solid var(--line);border-radius:4px;padding:4px 2px;text-align:center;font:500 .75rem var(--f-mono)}
+.sw-hours div b{display:block;font-size:.95rem}
+.sw-hours div.on{background:var(--up-soft);border-color:var(--up);color:var(--up)}
 .seg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:6px 0}
 .seg button{font:inherit;font-size:.85rem;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -177,6 +187,7 @@ details summary{cursor:pointer;font-weight:600}
       <button role="tab" data-tab="operaciones" aria-selected="false">Mis operaciones</button>
       <button role="tab" data-tab="estrategia" aria-selected="false">Mi estrategia</button>
       <button role="tab" data-tab="journal" aria-selected="false">Win rate</button>
+      <button role="tab" data-tab="semanal" aria-selected="false">Resumen semanal</button>
       <button role="tab" data-tab="analisis" aria-selected="false">Buenas vs malas</button>
       <button role="tab" data-tab="comportamiento" aria-selected="false">Comportamiento</button>
       <button role="tab" data-tab="filtros" aria-selected="false">Filtros</button>
@@ -346,6 +357,22 @@ details summary{cursor:pointer;font-weight:600}
     </div>
   </section>
 
+  <!-- ====================== RESUMEN SEMANAL ====================== -->
+  <section class="view" id="view-semanal" hidden>
+    <div class="panel-head">
+      <div>
+        <h2>Resumen semanal de tus operaciones reales</h2>
+        <div class="small muted">Solo cuenta las operaciones de trading real (no el backtesting), del mercado elegido arriba. Semanas de lunes a domingo; horas en hora de Madrid.</div>
+      </div>
+    </div>
+    <div id="sw-empty" class="banner info" hidden></div>
+    <div class="panel" id="sw-overview-panel">
+      <div class="panel-head"><h3>Semana a semana</h3><span class="muted small" id="sw-count"></span></div>
+      <div class="tablebox"><table id="sw-overview"></table></div>
+    </div>
+    <div id="sw-weeks" style="display:flex;flex-direction:column;gap:12px"></div>
+  </section>
+
   <!-- ====================== ANÁLISIS ====================== -->
   <section class="view" id="view-analisis" hidden>
     <h2>¿Por qué ganan tus buenas y fallan tus malas?</h2>
@@ -479,6 +506,7 @@ details summary{cursor:pointer;font-weight:600}
         <label>Stop loss<input id="t-sl" inputmode="decimal"></label>
         <label>Take profit<input id="t-tp" inputmode="decimal"></label>
         <label>Precio de salida<input id="t-exit" inputmode="decimal"></label>
+        <label>Hora de salida (TP / SL)<input type="time" id="t-exit-time"></label>
         <label>R conseguido (si no pones precios)<input id="t-r" inputmode="decimal" placeholder="2 / -1 / 0"></label>
         <label>Beneficio en € (opcional)<input id="t-pnl" inputmode="decimal"></label>
         <label>¿Seguiste el plan?<select id="t-plan"><option value="true">Sí</option><option value="false">No</option></select></label>
@@ -740,6 +768,7 @@ function normalize(raw) {
   const t = {};
   t.date = raw.date ? String(raw.date).slice(0, 10) : todayISO();
   t.time = raw.time ? String(raw.time).slice(0, 5) : "";
+  t.exit_time = raw.exit_time ? String(raw.exit_time).slice(0, 5) : "";
   t.pair = canonPair(raw.pair) || "EURUSD";
   const d = String(raw.direction || "").toLowerCase();
   t.direction = /^(l|c|b)/.test(d) ? "Long" : "Short";
@@ -1013,6 +1042,7 @@ const activeTab = () => document.querySelector("#tabs button[aria-selected=true]
 function renderAll() {
   const tab = activeTab();
   if (tab === "journal") renderJournal();
+  if (tab === "semanal") renderWeekSummary();
   if (tab === "analisis") renderAnalysis();
   if (tab === "comportamiento") renderBehavior();
   if (tab === "filtros") renderFilters();
@@ -1218,6 +1248,92 @@ function renderJournal() {
   table($("#j-table"), [...tradeCols, {h: "", html: 1, f: t => `<button class="btn small" data-edit="${esc(t.id)}">Editar</button>`}], [...ts].reverse().map(tradeRow));
 }
 $("#j-pair").addEventListener("change", renderJournal);
+
+// =====================================================================
+// Resumen semanal (solo operaciones reales)
+// =====================================================================
+const weekStart = d => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() - (x.getUTCDay() + 6) % 7); return x.toISOString().slice(0, 10); };
+const addDays = (d, n) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const fmtDay = (d, o = {day: "numeric", month: "short"}) => new Date(d + "T12:00:00Z").toLocaleDateString("es-ES", {...o, timeZone: "UTC"});
+const weekLabel = w => { const e = addDays(w, 6); return `${fmtDay(w)} – ${fmtDay(e)} ${e.slice(0, 4)}`; };
+const fmtRR = v => v == null ? "—" : "1:" + v.toFixed(2).replace(/\.?0+$/, "").replace(".", ",");
+// Hora a la que se cerró en TP: la hora de salida si la hay; si no, la de entrada (aproximada)
+const tpTime = t => t.exit_time || t.time || "";
+function weekStats(ts) {
+  const s = summary(ts), wins = ts.filter(t => t.win);
+  const rrs = ts.map(t => t.rr).filter(v => v != null), winRs = wins.map(t => t.r).filter(v => v != null);
+  const hours = wins.map(t => tpTime(t)).filter(Boolean).map(h => +h.slice(0, 2));
+  const hc = {}; hours.forEach(h => hc[h] = (hc[h] || 0) + 1);
+  const topH = Object.entries(hc).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0];
+  const setups = breakdown(ts, "setup").sort((a, b) => b.n - a.n || (b.totalR ?? 0) - (a.totalR ?? 0));
+  const rs = ts.filter(t => t.r != null);
+  return {...s, rrPlan: mean(rrs), rrWin: mean(winRs), nRR: rrs.length, hc, topH: topH ? +topH[0] : null, wins,
+    setups, mainSetup: setups[0]?.key || "", best: rs.length ? rs.reduce((a, b) => b.r > a.r ? b : a) : null, worst: rs.length ? rs.reduce((a, b) => b.r < a.r ? b : a) : null,
+    days: new Set(ts.map(t => t.date)).size};
+}
+function renderWeekSummary() {
+  const real = realTrades();
+  const weeks = new Map();
+  for (const t of real) { const w = weekStart(t.date); if (!weeks.has(w)) weeks.set(w, []); weeks.get(w).push(t); }
+  const keys = [...weeks.keys()].sort().reverse();
+  $("#sw-empty").hidden = !!keys.length || !state.loaded;
+  $("#sw-empty").innerHTML = `Todavía no hay operaciones reales${state.mercado && state.mercado !== "todo" ? " en este mercado" : ""}. El resumen se rellena solo con lo que registres como «Trading real» en <button class="btn" data-goto="operaciones">Mis operaciones</button>.`;
+  $("#sw-overview-panel").hidden = !keys.length;
+  $("#sw-count").textContent = `${real.length} operaciones reales en ${keys.length} ${keys.length === 1 ? "semana" : "semanas"}`;
+  const W = keys.map(w => ({w, ts: weeks.get(w), ...weekStats(weeks.get(w))}));
+  table($("#sw-overview"), [
+    {h: "Semana", f: r => weekLabel(r.w)}, {h: "Ops", n: 1, f: r => r.trades}, {h: "G/P/BE", n: 1, f: r => `${r.wins.length}/${r.losses}/${r.be}`},
+    {h: "WR", n: 1, f: r => fmtP(r.wr)}, {h: "R total", n: 1, f: r => fmtR(r.totalR), cls: r => cls(r.totalR)},
+    {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}, {h: "R:R plan.", n: 1, f: r => fmtRR(r.rrPlan)},
+    {h: "Estrategia principal", f: r => r.mainSetup || "—"}, {h: "Hora TP habitual", n: 1, f: r => r.topH == null ? "—" : `${String(r.topH).padStart(2, "0")}:00`}], W);
+  const open = new Set([...document.querySelectorAll("#sw-weeks details[open]")].map(d => d.dataset.w));
+  $("#sw-weeks").innerHTML = W.map((r, i) => weekCard(r, open.size ? open.has(r.w) : i === 0)).join("");
+}
+function weekCard(r, isOpen) {
+  const ts = [...r.ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const kp = [["Operaciones", `${r.trades} <span class="small muted">en ${r.days} ${r.days === 1 ? "día" : "días"}</span>`],
+    ["Win rate", fmtP(r.wr)], ["G / P / BE", `${r.wins.length} / ${r.losses} / ${r.be}`],
+    ["R total", `<span class="${cls(r.totalR)}">${fmtR(r.totalR)}</span>`], ["Expectativa", `<span class="${cls(r.exp)}">${fmtR(r.exp)}</span>`],
+    ["Profit factor", r.pf == null ? "—" : r.pf.toFixed(2)],
+    ["R:R planificado", fmtRR(r.rrPlan) + (r.nRR && r.nRR < r.trades ? ` <span class="small muted">(${r.nRR} con TP)</span>` : "")],
+    ["R medio ganadora", fmtR(r.avgWin)], ["R medio perdedora", fmtR(r.avgLoss)],
+    ...(r.pnl != null ? [["Beneficio", `<span class="${cls(r.pnl)}">${r.pnl > 0 ? "+" : ""}${r.pnl.toFixed(2)} €</span>`]] : []),
+    ["Plan cumplido", fmtP(r.plan)]];
+  // horas de TP: casillas de 0 a 23 h, resaltando las que tienen TP
+  const hrs = Object.keys(r.hc).map(Number), lo = hrs.length ? Math.min(...hrs, 7) : 7, hi = hrs.length ? Math.max(...hrs, 22) : 22;
+  const approx = r.wins.some(t => !t.exit_time && t.time);
+  const grid = Array.from({length: hi - lo + 1}, (_, k) => lo + k).map(h => `<div class="${r.hc[h] ? "on" : ""}" title="${r.hc[h] || 0} TP entre las ${h}:00 y las ${h}:59"><b>${r.hc[h] || "·"}</b>${String(h).padStart(2, "0")}h</div>`).join("");
+  const confW = {}; r.wins.forEach(t => t.confluences.forEach(c => confW[c] = (confW[c] || 0) + 1));
+  const topConf = Object.entries(confW).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const sess = breakdown(ts, "session").sort((a, b) => b.n - a.n);
+  const head = `<summary><h3>Semana ${weekLabel(r.w)}</h3>
+    <span class="small"><b>${r.trades}</b> ops · WR <b>${fmtP(r.wr)}</b> · <b class="${cls(r.totalR)}">${fmtR(r.totalR)}</b> · R:R ${fmtRR(r.rrPlan)}</span></summary>`;
+  return `<details class="sw-week" data-w="${r.w}" ${isOpen ? "open" : ""}>${head}<div class="sw-body">
+    <div class="kpis">${kp.map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("")}</div>
+    <div class="grid g2">
+      <div class="panel"><h3>Estrategia</h3>
+        <div class="tablebox"><table>${r.setups.length ? `<thead><tr><th>Setup</th><th class="n">Ops</th><th class="n">WR</th><th class="n">R total</th><th class="n">R:R plan.</th></tr></thead><tbody>${r.setups.map(g => { const gs = ts.filter(t => t.setup === g.key), rr = mean(gs.map(t => t.rr).filter(v => v != null)); return `<tr><td>${esc(g.key)}</td><td class="n">${g.n}</td><td class="n">${fmtP(g.wr)}</td><td class="n ${cls(g.totalR)}">${fmtR(g.totalR)}</td><td class="n">${fmtRR(rr)}</td></tr>`; }).join("")}</tbody>` : `<tr><td class="muted">Sin setup apuntado esta semana.</td></tr>`}</table></div>
+        ${topConf.length ? `<div class="small"><span class="muted">Confluencias en tus ganadoras:</span> ${topConf.map(([c, n]) => `<span class="pill">${esc(c)} ×${n}</span>`).join(" ")}</div>` : ""}
+        ${sess.length ? `<div class="small"><span class="muted">Por sesión:</span> ${sess.map(g => `${esc(g.key)} ${g.n} ops, WR ${fmtP(g.wr)}, <span class="${cls(g.totalR)}">${fmtR(g.totalR)}</span>`).join(" · ")}</div>` : ""}
+      </div>
+      <div class="panel"><h3>Horarios de TP</h3>
+        ${r.wins.length ? `<div class="sw-hours" role="img" aria-label="TP por hora">${grid}</div>
+        <div class="small">${r.topH != null ? `La mayoría de tus TP llegaron entre las <b>${String(r.topH).padStart(2, "0")}:00 y las ${String(r.topH).padStart(2, "0")}:59</b>.` : ""}
+          ${approx ? `<span class="muted">Las ganadoras sin «hora de salida» se cuentan con su hora de entrada.</span>` : ""}</div>
+        <div class="tablebox"><table><thead><tr><th>Día</th><th>Entrada</th><th>TP</th><th>Operación</th><th class="n">R</th></tr></thead><tbody>${r.wins.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).map(t => `<tr><td>${esc(fmtDay(t.date, {weekday: "short", day: "numeric"}))}</td><td class="num">${esc(t.time || "—")}</td><td class="num">${esc(t.exit_time || "—")}</td><td>${esc(t.pair + " " + t.direction)}${t.setup ? ` <span class="muted small">${esc(t.setup)}</span>` : ""}</td><td class="n pos">${fmtR(t.r)}</td></tr>`).join("")}</tbody></table></div>`
+        : `<p class="muted small" style="margin:0">Ningún TP esta semana.</p>`}
+      </div>
+    </div>
+    ${r.best && r.worst && r.trades > 1 ? `<div class="small"><span class="muted">Mejor operación:</span> ${esc(fmtDay(r.best.date, {weekday: "long", day: "numeric"}))} ${esc(r.best.pair)} <span class="${cls(r.best.r)}">${fmtR(r.best.r)}</span> · <span class="muted">Peor:</span> ${esc(fmtDay(r.worst.date, {weekday: "long", day: "numeric"}))} ${esc(r.worst.pair)} <span class="${cls(r.worst.r)}">${fmtR(r.worst.r)}</span></div>` : ""}
+    <details class="small"><summary class="muted">Ver las ${ts.length} operaciones de la semana</summary><div class="tablebox" style="margin-top:8px"><table id="sw-t-${r.w}">${opsTableHTML(ts)}</table></div></details>
+  </div></details>`;
+}
+function opsTableHTML(ts) {
+  const cols = [{h: "Día", f: t => fmtDay(t.date, {weekday: "short", day: "numeric"})}, {h: "Entrada", f: t => t.time || "—"}, {h: "Salida", f: t => t.exit_time || "—"},
+    {h: "Operación", f: t => t.pair + " " + t.direction}, {h: "Sesión", f: t => t.session}, {h: "Setup", f: t => t.setup}, {h: "R:R", n: 1, f: t => fmtRR(t.rr)},
+    {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)}, {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`}];
+  return `<thead><tr>${cols.map(c => `<th class="${c.n ? "n" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead><tbody>${ts.map(t => `<tr>${cols.map(c => `<td class="${c.n ? "n" : ""} ${c.cls ? c.cls(t) : ""}">${c.html ? c.f(t) : esc(c.f(t))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-edit]"); if (!b) return;
   const t = state.trades.find(x => x.id === b.dataset.edit); if (!t) return;
@@ -1332,7 +1448,7 @@ function fillForm(t) {
   const set = (id, v) => $(id).value = v ?? "";
   set("#t-cuenta", t.cuenta || "Real"); set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
-  set("#t-exit", t.exit_price); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
+  set("#t-exit", t.exit_price); set("#t-exit-time", t.exit_time); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
   set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
   state.formShots = [...(t.shots || [])]; state.pendingFiles = []; state.formAI = t.ai_analysis || ""; state.autoSession = state.autoBias = false;
   $("#t-ai-out").innerHTML = state.formAI ? "<b>Análisis de la IA:</b> " + mdLite(state.formAI) : ""; renderThumbs();
@@ -1352,7 +1468,7 @@ $("#t-form").addEventListener("submit", async e => {
   const hasPrices = num(v("#t-entry")) != null && num(v("#t-sl")) != null && num(v("#t-exit")) != null;
   if (!hasPrices && num(v("#t-r")) == null) { $("#t-msg").innerHTML = `<span class="neg">Pon entrada, stop y salida, o el R conseguido.</span>`; return; }
   const raw = {cuenta: v("#t-cuenta"), fecha_estimada: state.editing && state.editing.date === v("#t-date") ? state.editing.fecha_estimada : false, date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
-    daily_bias: v("#t-bias"), volume: v("#t-vol"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
+    daily_bias: v("#t-bias"), volume: v("#t-vol"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), exit_time: v("#t-exit-time"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
     followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
     confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
   $("#t-save").disabled = true;
@@ -1555,6 +1671,7 @@ async function importBroker(file) {
     const entry = numCell(r[map.entry]), exit = numCell(r[map.exit]);
     if (entry == null || exit == null) continue;
     const ot = brokerTime(r[map.open_time], tz) || brokerTime(r[map.close_time], tz);
+    const ct = map.close_time != null && map.close_time !== map.open_time ? brokerTime(r[map.close_time], tz) : null;
     if (!ot) continue;
     const sl = map.sl != null ? numCell(r[map.sl]) : null, tp = map.tp != null ? numCell(r[map.tp]) : null, profit = map.profit != null ? numCell(r[map.profit]) : null;
     const ext = `${pair}-${map.id != null && r[map.id] ? r[map.id] : ot.date + ot.time + entry}`;
@@ -1563,7 +1680,7 @@ async function importBroker(file) {
     const direction = /(buy|compra|long)/.test(type) ? "Long" : "Short";
     let rMult = risk && profit != null ? Math.round(profit / risk * 100) / 100 : null;
     if (rMult == null && !(sl && sl > 0)) rMult = profit != null ? (profit > 0 ? 1 : profit < 0 ? -1 : 0) : null;
-    cands.push({date: ot.date, time: ot.time, pair, direction, entry, exit_price: exit, stop_loss: sl && sl > 0 ? sl : null, take_profit: tp && tp > 0 ? tp : null,
+    cands.push({date: ot.date, time: ot.time, exit_time: ct && ct.date === ot.date ? ct.time : "", pair, direction, entry, exit_price: exit, stop_loss: sl && sl > 0 ? sl : null, take_profit: tp && tp > 0 ? tp : null,
       pnl: profit, r: rMult, session: sessionFromMadridHour(+ot.time.slice(0, 2)), daily_bias: biasFromBriefing(ot.date, pair), ext_id: ext,
       notes: `Importada de ${file.name}${map.volume != null && r[map.volume] ? ` · volumen ${r[map.volume]}` : ""}${rMult != null && !risk && !(sl > 0) ? " · R aproximado (sin stop en el informe)" : ""}`});
   }
@@ -1579,7 +1696,7 @@ $("#csv-file").addEventListener("change", async e => {
   e.target.value = "";
 });
 $("#csv-export").addEventListener("click", async () => {
-  const cols = ["cuenta", "date", "time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
+  const cols = ["cuenta", "date", "time", "exit_time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
   const q = v => { const s = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [cols.join(","), ...state.trades.map(t => cols.map(c => q(t[c])).join(","))].join("\n");
   const dl = await use("downloads");
