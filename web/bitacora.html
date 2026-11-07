@@ -135,6 +135,11 @@ a[href^="/_blob/"] img{cursor:zoom-in}
 #lb .lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.15);color:#fff;font-size:1.5rem;cursor:pointer}
 #lb .lb-nav:hover{background:rgba(255,255,255,.3)}
 #lb .lb-prev{left:12px} #lb .lb-next{right:12px}
+#lb .lb-expl{padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.06);color:#fff;display:flex;flex-direction:column;gap:6px}
+#lb .lb-expl textarea{background:rgba(255,255,255,.1);color:#fff;border-color:rgba(255,255,255,.25);min-height:60px;max-height:30vh}
+#lb .lb-expl textarea::placeholder{color:rgba(255,255,255,.55)}
+#lb .lb-expl .btn{background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.25)}
+#lb .lb-expl .btn.primary{background:var(--accent);border-color:var(--accent)}
 .drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center;cursor:pointer;background:var(--bg)}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}
@@ -680,6 +685,11 @@ details summary{cursor:pointer;font-weight:600}
   <div class="lb-bar"><span id="lb-count" class="small"></span>
     <span class="row" style="gap:6px"><button class="btn" id="lb-zoom" type="button">Ampliar</button><button class="btn" id="lb-close" type="button">Cerrar</button></span></div>
   <div class="lb-stage" id="lb-stage"><img id="lb-img" alt="Imagen de la operación"></div>
+  <form class="lb-expl" id="lb-expl" hidden>
+    <label class="small" for="lb-expl-txt"><b>Tu explicación de esta operación</b> <span id="lb-expl-who" style="opacity:.7"></span></label>
+    <textarea id="lb-expl-txt" rows="3" placeholder="Qué tipo de operación era, por qué entraste, cómo la gestionaste y qué piensas de ella"></textarea>
+    <div class="row" style="gap:8px"><button type="submit" class="btn primary small">Guardar explicación</button><span class="small" id="lb-expl-st" role="status" style="opacity:.8"></span></div>
+  </form>
   <button class="lb-nav lb-prev" id="lb-prev" type="button" aria-label="Imagen anterior">‹</button>
   <button class="lb-nav lb-next" id="lb-next" type="button" aria-label="Imagen siguiente">›</button>
 </div>
@@ -2545,8 +2555,7 @@ document.addEventListener("click", async e => {
     const t = (state.allTrades || []).find(x => x.id === sv.dataset.explSave); if (!t) return;
     const txt = sv.closest("[data-expl-cell]").querySelector("textarea").value.trim();
     sv.disabled = true; sv.textContent = "Guardando…";
-    t.explicacion = txt; t.created = uploadedAt(t);
-    try { if (col) await col.doc(t.id).update({explicacion: txt, created: t.created}); state.explEditing = null; renderOps(); }
+    try { await saveExplicacion(t, txt); state.explEditing = null; renderOps(); }
     catch (err) { sv.disabled = false; sv.textContent = "Reintentar"; sv.title = err.message || err.code || ""; }
   }
 });
@@ -2568,7 +2577,7 @@ function renderOps() {
     {h: "Encaje", n: 1, html: 1, f: t => { const TP = activeProfile(t.pair), f = TP ? fitScore(t, TP).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
     {h: "Tu explicación", html: 1, f: t => explCell(t)},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
-    {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap" data-shots="${esc(t.shots.join(","))}">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<a href="/_blob/${esc(t.shots[3])}" class="small muted" data-lb-i="3">+${t.shots.length - 3}</a>` : ""}</span>`},
+    {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap" data-shots="${esc(t.shots.join(","))}" data-shots-trade="${esc(t.id)}">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<a href="/_blob/${esc(t.shots[3])}" class="small muted" data-lb-i="3">+${t.shots.length - 3}</a>` : ""}</span>`},
     {h: "Análisis", html: 1, f: t => (t.deep_analysis ? `<button class="btn" data-deep-open="${esc(t.id)}"><span class="pill ${deepGradeCls(t.deep_analysis.nota)}">${esc(t.deep_analysis.nota || "?")}</span> Ver</button>` : state.pendingDeep?.has(t.id) ? `<span class="pill warn">En cola</span>` : t.shots.length ? `<button class="btn" data-deep-run="${esc(t.id)}">Análisis a fondo</button>` : "") + ` <button class="btn small" data-rev-open="${esc(t.id)}" title="Comenta un error o una mejora y la IA te dice si tienes razón">💬 ${t.revisiones?.length ? "Comentarios (" + t.revisiones.length + ")" : "Comentar"}</button>`},
     {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
   ], [...ts].sort((a, b) => String(uploadedAt(b)).localeCompare(String(uploadedAt(a)))));
@@ -2790,10 +2799,27 @@ function lbShow() {
   $("#lb").classList.remove("zoom"); $("#lb-zoom").textContent = "Ampliar";
   $("#lb-stage").scrollTo(0, 0);
 }
+function lbExplRender() {
+  const f = $("#lb-expl"), t = lb.trade && (state.allTrades || []).find(x => x.id === lb.trade);
+  f.hidden = !t; if (!t) return;
+  $("#lb-expl-who").textContent = `· ${t.date}${t.time ? " " + t.time : ""} · ${t.pair} ${t.direction}${t.result ? " · " + t.result : ""}`;
+  $("#lb-expl-txt").value = t.explicacion || ""; $("#lb-expl-st").textContent = "";
+}
+async function saveExplicacion(t, txt) {
+  t.explicacion = txt; t.created = uploadedAt(t);
+  if (col) await col.doc(t.id).update({explicacion: txt, created: t.created});
+}
+$("#lb-expl").addEventListener("submit", async e => {
+  e.preventDefault();
+  const t = (state.allTrades || []).find(x => x.id === lb.trade); if (!t) return;
+  const st = $("#lb-expl-st"); st.textContent = "Guardando…";
+  try { await saveExplicacion(t, $("#lb-expl-txt").value.trim()); st.textContent = "Guardada ✓"; if (activeTab() === "operaciones" && !state.explEditing) renderOps(); }
+  catch (err) { st.textContent = "No se pudo guardar: " + (err.message || err.code); }
+});
 function openLightbox(list, i = 0) {
   if (!list.length) return;
   lb.list = list; lb.i = Math.max(0, Math.min(i, list.length - 1));
-  lbShow(); $("#lb").hidden = false; document.body.style.overflow = "hidden"; $("#lb-close").focus();
+  lbShow(); lbExplRender(); $("#lb").hidden = false; document.body.style.overflow = "hidden"; $("#lb-close").focus();
 }
 function closeLightbox() { $("#lb").hidden = true; $("#lb-img").removeAttribute("src"); document.body.style.overflow = $("#deep-modal").hidden ? "" : "hidden"; }
 function lbStep(d) { lb.i = (lb.i + d + lb.list.length) % lb.list.length; lbShow(); }
@@ -2812,6 +2838,7 @@ $("#lb-stage").addEventListener("click", e => { if (e.target.id === "lb-stage") 
 document.addEventListener("keydown", e => {
   if ($("#lb").hidden) return;
   if (e.key === "Escape") { e.stopImmediatePropagation(); closeLightbox(); }
+  else if (e.target.closest?.("#lb-expl")) return; // escribiendo la explicación: las flechas mueven el cursor
   else if (e.key === "ArrowLeft") lbStep(-1); else if (e.key === "ArrowRight") lbStep(1);
 }, true);
 document.addEventListener("click", e => {
@@ -2820,6 +2847,7 @@ document.addEventListener("click", e => {
   const id = a.getAttribute("href").slice(7);
   const g = a.closest("[data-shots]");
   const list = g ? g.dataset.shots.split(",").filter(Boolean) : [...(a.closest(".thumbs") || a.parentElement).querySelectorAll('a[href^="/_blob/"]')].map(x => x.getAttribute("href").slice(7));
+  lb.trade = g?.dataset.shotsTrade || (a.closest("#deep-body") ? $("#rev-box")?.dataset.trade : null) || (state.allTrades || []).find(t => t.shots?.includes(id))?.id || null;
   openLightbox(list, Math.max(0, list.indexOf(id)));
 });
 
