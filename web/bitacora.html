@@ -994,6 +994,7 @@ async function boot() {
     for (const mk of ["fx", "fut"]) { const sc = snap.docs.find(d => d.id === CHAT_DOC(mk)); if (sc) state.stratChats[mk] = sc.data(); }
     const nc = snap.docs.find(d => d.id === "stats_chat"); if (nc) state.statsChat = nc.data();
     const wc = snap.docs.find(d => d.id === "weekly_chat"); if (wc) state.weeklyChat = wc.data();
+    state.weeklyAI = Object.fromEntries(snap.docs.filter(d => d.data()?.kind === "weekly_ai").map(d => [d.data().semana + "|" + (d.data().mk || ""), d.data()]));
     const mj = snap.docs.find(d => d.id === "improvements"); state.mejoras = mj ? mj.data() : null; renderMejoras();
     state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
     for (const mk of ["fx", "fut"]) { const prof = snap.docs.find(d => d.id === PROF_DOC(mk)); state.profiles[mk] = prof ? prof.data() : null; }
@@ -1297,6 +1298,7 @@ function renderWeekSummary() {
   $("#sw-overview-panel").hidden = !keys.length;
   $("#sw-count").textContent = `${all ? "Forex + Futuros · " : MK_LBL[mk] + " · "}${real.length} operaciones reales en ${keys.length} ${keys.length === 1 ? "semana" : "semanas"}`;
   const W = keys.map(w => ({w, ts: weeks.get(w), all, ...weekStats(weeks.get(w))}));
+  state.swCtx = {mk, W};
   const mkCell = (r, m) => { const g = r.ts.filter(t => mkOf(t.pair) === m); if (!g.length) return "—"; const q = summary(g); return `${g.length} ops · ${fmtP(q.wr)} · <span class="${cls(q.totalR)}">${fmtR(q.totalR)}</span>`; };
   table($("#sw-overview"), [
     {h: "Semana", f: r => weekLabel(r.w)}, {h: "Ops", n: 1, f: r => r.trades}, {h: "G/P/BE", n: 1, f: r => `${r.wins.length}/${r.losses}/${r.be}`},
@@ -1306,7 +1308,7 @@ function renderWeekSummary() {
     ...(all ? [{h: "Forex", html: 1, f: r => mkCell(r, "fx")}, {h: "Futuros", html: 1, f: r => mkCell(r, "fut")}] : [])], W);
   const open = new Set([...document.querySelectorAll("#sw-weeks details[open]")].map(d => d.dataset.w));
   $("#sw-weeks").innerHTML = W.map((r, i) => weekCard(r, open.size ? open.has(r.w) : i === 0)).join("");
-  state.swCtx = {mk, W}; renderWeeklyChat();
+  renderWeeklyChat();
 }
 function weekCard(r, isOpen) {
   const ts = [...r.ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
@@ -1347,11 +1349,50 @@ function weekCard(r, isOpen) {
       </div>
     </div>
     ${r.best && r.worst && r.trades > 1 ? `<div class="small"><span class="muted">Mejor operación:</span> ${esc(fmtDay(r.best.date, {weekday: "long", day: "numeric"}))} ${esc(r.best.pair)} <span class="${cls(r.best.r)}">${fmtR(r.best.r)}</span> · <span class="muted">Peor:</span> ${esc(fmtDay(r.worst.date, {weekday: "long", day: "numeric"}))} ${esc(r.worst.pair)} <span class="${cls(r.worst.r)}">${fmtR(r.worst.r)}</span></div>` : ""}
+    ${weekAIPanel(r)}
     <details class="small"><summary class="muted">Ver las ${ts.length} operaciones de la semana</summary><div class="tablebox" style="margin-top:8px"><table id="sw-t-${r.w}">${opsTableHTML(ts)}</table></div></details>
   </div></details>`;
 }
 document.querySelectorAll("#sw-mk [data-swmk]").forEach(b => b.addEventListener("click", () => { state.swMk = b.dataset.swmk; try { localStorage.setItem("swMk", state.swMk); } catch {} renderWeekSummary(); }));
 try { state.swMk = localStorage.getItem("swMk") || null; } catch {}
+// ---- Comentario de la IA sobre una semana (se guarda por semana y mercado) ----
+const weekAIKey = (w, mk) => state.weeklyAI?.[w + "|" + mk] || state.weeklyAI?.[w + "|"] || null;
+function weekAIPanel(r) {
+  const mk = state.swCtx?.mk || r.mk || "fx", A = weekAIKey(r.w, mk), live = state.wkAILive?.[r.w + "|" + mk];
+  return `<div class="panel"><div class="panel-head"><h3>Comentario de la IA sobre la semana</h3><span class="small muted">${A ? "Generado el " + esc(A.date || "") : ""}</span></div>
+    <div class="row"><button class="btn primary" type="button" data-wai="${r.w}" ${live ? "disabled" : ""}>${A ? "Volver a analizar esta semana" : "Analizar esta semana"}</button>${live ? `<span class="small muted">La IA está analizando la semana…</span>` : ""}</div>
+    <div class="ai-out" id="wai-${r.w}">${A ? mdLite(A.text || "") : ""}</div></div>`;
+}
+async function analyzeWeek(w) {
+  const {mk = "fx", W = []} = state.swCtx || {}, i = W.findIndex(x => x.w === w), r = W[i], prev = W[i + 1];
+  if (!r) return;
+  const f = q => ({ops: q.trades, ganadas: q.wins.length, perdidas: q.losses, be: q.be, wr: q.wr == null ? null : +q.wr.toFixed(1), r_total: +q.totalR.toFixed(2), esperanza: q.exp == null ? null : +q.exp.toFixed(2), rr_planeado_medio: q.rrPlan == null ? null : +q.rrPlan.toFixed(2), profit_factor: q.pf == null ? null : +q.pf.toFixed(2), hora_tp_habitual: q.topH});
+  const ts = [...r.ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  const prompt = `${COACH}
+Haz el RESUMEN SEMANAL del trading REAL del trader para la semana del ${weekLabel(w)} (${mk === "todo" ? "Forex y Futuros juntos" : MK_LBL[mk]}). Tiene TDAH: claro, ordenado, con cifras de los datos y máximo 22 líneas. No inventes números; si la muestra es pequeña, dilo. Usa lo que él explicó en cada operación (notes y comentarios_trader).
+ESTA SEMANA: ${JSON.stringify(f(r))}
+${prev ? `SEMANA ANTERIOR (${weekLabel(prev.w)}): ${JSON.stringify(f(prev))}` : "Es la primera semana registrada."}
+OPERACIONES (horas de Madrid; exit_time = hora de cierre):
+${compactCSV(ts, 100)}
+Apartados (títulos con ##):
+## Números de la semana
+## Estrategia: qué setups y tipos de operación usaste y cuáles funcionaron
+## Horarios: a qué horas salieron los TP y a cuáles los SL
+## R:R: el planeado frente al conseguido y si compensa tu win rate
+## Para la semana que viene (3 reglas concretas)`;
+  const key = w + "|" + mk; state.wkAILive = {...(state.wkAILive || {}), [key]: true}; renderWeekSummary();
+  const out = $("#wai-" + w);
+  const text = out ? await askAI(out, prompt, {modelTier: "complex"}) : null;
+  state.wkAILive[key] = false;
+  if (text) {
+    const doc = {kind: "weekly_ai", semana: w, mk, text, date: todayISO()};
+    state.weeklyAI = {...(state.weeklyAI || {}), [key]: doc};
+    if (col) { try { await col.doc("weekly_ai_" + w + "_" + mk).set(doc); } catch {} }
+    renderWeekSummary();
+  } else { const b = document.querySelector(`[data-wai="${w}"]`); if (b) b.disabled = false; }
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-wai]"); if (b) analyzeWeek(b.dataset.wai); });
+
 // ---- Chat de la IA sobre el resumen semanal ----
 const WQ_QUICK = ["Resúmeme mi última semana", "¿Qué hice distinto esta semana frente a la anterior?", "¿Estoy mejorando semana a semana?", "¿Qué tipo de operación me funciona y cuál no, según lo que expliqué?", "¿A qué horas debería dejar de operar?", "¿Qué debería cambiar la semana que viene?"];
 const wqData = () => state.weeklyChat || {mensajes: []};
