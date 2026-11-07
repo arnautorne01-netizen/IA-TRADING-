@@ -109,6 +109,7 @@ ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .sw-hours div{border:1px solid var(--line);border-radius:4px;padding:4px 2px;text-align:center;font:500 .75rem var(--f-mono)}
 .sw-hours div b{display:block;font-size:.95rem}
 .sw-hours div.on{background:var(--up-soft);border-color:var(--up);color:var(--up)}
+#wq-quick .pill{white-space:normal;text-align:left;max-width:100%}
 .seg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:6px 0}
 .seg button{font:inherit;font-size:.85rem;padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -1349,12 +1350,25 @@ function weekCard(r, isOpen) {
       </div>
     </div>
     ${r.best && r.worst && r.trades > 1 ? `<div class="small"><span class="muted">Mejor operación:</span> ${esc(fmtDay(r.best.date, {weekday: "long", day: "numeric"}))} ${esc(r.best.pair)} <span class="${cls(r.best.r)}">${fmtR(r.best.r)}</span> · <span class="muted">Peor:</span> ${esc(fmtDay(r.worst.date, {weekday: "long", day: "numeric"}))} ${esc(r.worst.pair)} <span class="${cls(r.worst.r)}">${fmtR(r.worst.r)}</span></div>` : ""}
+    ${weekConclusions(r, ts)}
     ${weekAIPanel(r)}
     <details class="small"><summary class="muted">Ver las ${ts.length} operaciones de la semana</summary><div class="tablebox" style="margin-top:8px"><table id="sw-t-${r.w}">${opsTableHTML(ts)}</table></div></details>
   </div></details>`;
 }
 document.querySelectorAll("#sw-mk [data-swmk]").forEach(b => b.addEventListener("click", () => { state.swMk = b.dataset.swmk; try { localStorage.setItem("swMk", state.swMk); } catch {} renderWeekSummary(); }));
 try { state.swMk = localStorage.getItem("swMk") || null; } catch {}
+// Conclusiones automáticas de la semana (frente a la anterior, R:R que compensa, SL, pérdidas grandes)
+function weekConclusions(r, ts) {
+  const W = state.swCtx?.W || [], prev = W[W.findIndex(x => x.w === r.w) + 1], C = [];
+  if (prev) C.push(`Frente a la semana anterior (${weekLabel(prev.w)}): win rate ${fmtP(r.wr)} (antes ${fmtP(prev.wr)}) y ${fmtR(r.totalR)} (antes ${fmtR(prev.totalR)}).`);
+  const be = r.rrPlan ? 100 / (1 + r.rrPlan) : null;
+  if (be != null && r.wr != null) C.push(r.wr >= be ? `Con un R:R medio de ${fmtRR(r.rrPlan)} te basta un ${be.toFixed(0)}% de acierto y has tenido ${fmtP(r.wr)}: semana con ventaja.` : `Con un R:R medio de ${fmtRR(r.rrPlan)} necesitas al menos un ${be.toFixed(0)}% de acierto y has tenido ${fmtP(r.wr)}: o subes el acierto o el R:R.`);
+  const sl = ts.filter(t => t.loss);
+  if (sl.length) C.push(`SL: ${sl.map(t => `${fmtDay(t.date, {weekday: "short"})} ${t.exit_time || t.time || "?"} (${t.pair})`).join(" · ")}.`);
+  const big = ts.filter(t => t.loss && t.r != null && t.r < -1.1); if (big.length) C.push(`${big.length} pérdida(s) pasaron de 1R: revisa si moviste el stop.`);
+  if (ts.length < 5) C.push("Con menos de 5 operaciones la semana es solo orientativa.");
+  return C.length ? `<ul class="clean small">${C.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+}
 // ---- Comentario de la IA sobre una semana (se guarda por semana y mercado) ----
 const weekAIKey = (w, mk) => state.weeklyAI?.[w + "|" + mk] || state.weeklyAI?.[w + "|"] || null;
 function weekAIPanel(r) {
