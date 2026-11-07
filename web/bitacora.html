@@ -362,9 +362,10 @@ details summary{cursor:pointer;font-weight:600}
     <div class="panel-head">
       <div>
         <h2>Resumen semanal de tus operaciones reales</h2>
-        <div class="small muted">Solo cuenta las operaciones de trading real (no el backtesting), del mercado elegido arriba. Semanas de lunes a domingo; horas en hora de Madrid.</div>
+        <div class="small muted">Solo cuenta las operaciones de trading real (no el backtesting). Semanas de lunes a domingo; horas en hora de Madrid.</div>
       </div>
     </div>
+    <div class="seg" id="sw-mk" role="group" aria-label="Qué resumen ver"><span class="small muted">Resumen de:</span><button type="button" data-swmk="fx">Forex</button><button type="button" data-swmk="fut">Futuros</button><button type="button" data-swmk="todo">Conjunto (Forex + Futuros)</button></div>
     <div id="sw-empty" class="banner info" hidden></div>
     <div class="panel" id="sw-overview-panel">
       <div class="panel-head"><h3>Semana a semana</h3><span class="muted small" id="sw-count"></span></div>
@@ -1272,20 +1273,25 @@ function weekStats(ts) {
     days: new Set(ts.map(t => t.date)).size};
 }
 function renderWeekSummary() {
-  const real = realTrades();
+  const mk = state.swMk || (state.mercado === "fut" ? "fut" : state.mercado === "todo" ? "todo" : "fx");
+  document.querySelectorAll("#sw-mk [data-swmk]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.swmk === mk)));
+  const all = mk === "todo";
+  const real = (state.allTrades || []).filter(t => t.cuenta === "Real" && (all || mkOf(t.pair) === mk));
   const weeks = new Map();
   for (const t of real) { const w = weekStart(t.date); if (!weeks.has(w)) weeks.set(w, []); weeks.get(w).push(t); }
   const keys = [...weeks.keys()].sort().reverse();
   $("#sw-empty").hidden = !!keys.length || !state.loaded;
-  $("#sw-empty").innerHTML = `Todavía no hay operaciones reales${state.mercado && state.mercado !== "todo" ? " en este mercado" : ""}. El resumen se rellena solo con lo que registres como «Trading real» en <button class="btn" data-goto="operaciones">Mis operaciones</button>.`;
+  $("#sw-empty").innerHTML = `Todavía no hay operaciones reales${all ? "" : " de " + MK_LBL[mk]}. El resumen se rellena solo con lo que registres como «Trading real» en <button class="btn" data-goto="operaciones">Mis operaciones</button>.`;
   $("#sw-overview-panel").hidden = !keys.length;
-  $("#sw-count").textContent = `${real.length} operaciones reales en ${keys.length} ${keys.length === 1 ? "semana" : "semanas"}`;
-  const W = keys.map(w => ({w, ts: weeks.get(w), ...weekStats(weeks.get(w))}));
+  $("#sw-count").textContent = `${all ? "Forex + Futuros · " : MK_LBL[mk] + " · "}${real.length} operaciones reales en ${keys.length} ${keys.length === 1 ? "semana" : "semanas"}`;
+  const W = keys.map(w => ({w, ts: weeks.get(w), all, ...weekStats(weeks.get(w))}));
+  const mkCell = (r, m) => { const g = r.ts.filter(t => mkOf(t.pair) === m); if (!g.length) return "—"; const q = summary(g); return `${g.length} ops · ${fmtP(q.wr)} · <span class="${cls(q.totalR)}">${fmtR(q.totalR)}</span>`; };
   table($("#sw-overview"), [
     {h: "Semana", f: r => weekLabel(r.w)}, {h: "Ops", n: 1, f: r => r.trades}, {h: "G/P/BE", n: 1, f: r => `${r.wins.length}/${r.losses}/${r.be}`},
     {h: "WR", n: 1, f: r => fmtP(r.wr)}, {h: "R total", n: 1, f: r => fmtR(r.totalR), cls: r => cls(r.totalR)},
     {h: "Expectativa", n: 1, f: r => fmtR(r.exp), cls: r => cls(r.exp)}, {h: "R:R plan.", n: 1, f: r => fmtRR(r.rrPlan)},
-    {h: "Estrategia principal", f: r => r.mainSetup || "—"}, {h: "Hora TP habitual", n: 1, f: r => r.topH == null ? "—" : `${String(r.topH).padStart(2, "0")}:00`}], W);
+    {h: "Estrategia principal", f: r => r.mainSetup || "—"}, {h: "Hora TP habitual", n: 1, f: r => r.topH == null ? "—" : `${String(r.topH).padStart(2, "0")}:00`},
+    ...(all ? [{h: "Forex", html: 1, f: r => mkCell(r, "fx")}, {h: "Futuros", html: 1, f: r => mkCell(r, "fut")}] : [])], W);
   const open = new Set([...document.querySelectorAll("#sw-weeks details[open]")].map(d => d.dataset.w));
   $("#sw-weeks").innerHTML = W.map((r, i) => weekCard(r, open.size ? open.has(r.w) : i === 0)).join("");
 }
@@ -1306,10 +1312,13 @@ function weekCard(r, isOpen) {
   const confW = {}; r.wins.forEach(t => t.confluences.forEach(c => confW[c] = (confW[c] || 0) + 1));
   const topConf = Object.entries(confW).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const sess = breakdown(ts, "session").sort((a, b) => b.n - a.n);
+  const split = r.all ? ["fx", "fut"].map(m => { const g = ts.filter(t => mkOf(t.pair) === m); if (!g.length) return ""; const q = weekStats(g);
+    return `<tr><td><b>${MK_LBL[m]}</b></td><td class="n">${q.trades}</td><td class="n">${q.wins.length}/${q.losses}/${q.be}</td><td class="n">${fmtP(q.wr)}</td><td class="n ${cls(q.totalR)}">${fmtR(q.totalR)}</td><td class="n ${cls(q.exp)}">${fmtR(q.exp)}</td><td class="n">${fmtRR(q.rrPlan)}</td><td>${esc(q.mainSetup || "—")}</td><td class="n">${q.topH == null ? "—" : String(q.topH).padStart(2, "0") + ":00"}</td></tr>`; }).join("") : "";
   const head = `<summary><h3>Semana ${weekLabel(r.w)}</h3>
     <span class="small"><b>${r.trades}</b> ops · WR <b>${fmtP(r.wr)}</b> · <b class="${cls(r.totalR)}">${fmtR(r.totalR)}</b> · R:R ${fmtRR(r.rrPlan)}</span></summary>`;
   return `<details class="sw-week" data-w="${r.w}" ${isOpen ? "open" : ""}>${head}<div class="sw-body">
     <div class="kpis">${kp.map(([k, v]) => `<div class="kpi"><span class="label">${k}</span><span class="v">${v}</span></div>`).join("")}</div>
+    ${split ? `<div class="panel"><h3>Forex frente a Futuros</h3><div class="tablebox"><table><thead><tr><th>Mercado</th><th class="n">Ops</th><th class="n">G/P/BE</th><th class="n">WR</th><th class="n">R total</th><th class="n">Expectativa</th><th class="n">R:R plan.</th><th>Estrategia principal</th><th class="n">Hora TP</th></tr></thead><tbody>${split}</tbody></table></div></div>` : ""}
     <div class="grid g2">
       <div class="panel"><h3>Estrategia</h3>
         <div class="tablebox"><table>${r.setups.length ? `<thead><tr><th>Setup</th><th class="n">Ops</th><th class="n">WR</th><th class="n">R total</th><th class="n">R:R plan.</th></tr></thead><tbody>${r.setups.map(g => { const gs = ts.filter(t => t.setup === g.key), rr = mean(gs.map(t => t.rr).filter(v => v != null)); return `<tr><td>${esc(g.key)}</td><td class="n">${g.n}</td><td class="n">${fmtP(g.wr)}</td><td class="n ${cls(g.totalR)}">${fmtR(g.totalR)}</td><td class="n">${fmtRR(rr)}</td></tr>`; }).join("")}</tbody>` : `<tr><td class="muted">Sin setup apuntado esta semana.</td></tr>`}</table></div>
@@ -1328,6 +1337,8 @@ function weekCard(r, isOpen) {
     <details class="small"><summary class="muted">Ver las ${ts.length} operaciones de la semana</summary><div class="tablebox" style="margin-top:8px"><table id="sw-t-${r.w}">${opsTableHTML(ts)}</table></div></details>
   </div></details>`;
 }
+document.querySelectorAll("#sw-mk [data-swmk]").forEach(b => b.addEventListener("click", () => { state.swMk = b.dataset.swmk; try { localStorage.setItem("swMk", state.swMk); } catch {} renderWeekSummary(); }));
+try { state.swMk = localStorage.getItem("swMk") || null; } catch {}
 function opsTableHTML(ts) {
   const cols = [{h: "Día", f: t => fmtDay(t.date, {weekday: "short", day: "numeric"})}, {h: "Entrada", f: t => t.time || "—"}, {h: "Salida", f: t => t.exit_time || "—"},
     {h: "Operación", f: t => t.pair + " " + t.direction}, {h: "Sesión", f: t => t.session}, {h: "Setup", f: t => t.setup}, {h: "R:R", n: 1, f: t => fmtRR(t.rr)},
