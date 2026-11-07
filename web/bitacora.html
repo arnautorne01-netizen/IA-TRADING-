@@ -538,7 +538,8 @@ details summary{cursor:pointer;font-weight:600}
       <div class="field">Confluencias presentes<div class="chips" id="t-confs"></div>
         <input id="t-conf-extra" placeholder="Otras confluencias, separadas por comas"></div>
       <div class="field">Errores cometidos<div class="chips" id="t-mistakes"></div></div>
-      <label class="field">Tu explicación: qué tipo de operación era, por qué entraste y cómo la gestionaste <span class="small muted">(la IA lo recuerda cuando le preguntes)</span><textarea id="t-notes" placeholder="Ej.: continuación alcista en Londres; barrieron el mínimo de Asia, entré en el FVG de M5 a favor del sesgo diario. Moví el stop a BE al llegar a 1R."></textarea></label>
+      <label class="field">Tu explicación: qué tipo de operación era, por qué entraste y cómo la gestionaste <span class="small muted">(la IA lo recuerda cuando le preguntes)</span><textarea id="t-expl" placeholder="Ej.: continuación alcista en Londres; barrieron el mínimo de Asia, entré en el FVG de M5 a favor del sesgo diario. Moví el stop a BE al llegar a 1R."></textarea></label>
+      <label class="field">Notas <span class="small muted">(otras anotaciones; aquí escribe la IA cuando crea la operación)</span><textarea id="t-notes" rows="2" style="min-height:44px"></textarea></label>
       <div class="row"><button class="btn primary" type="submit" id="t-save">Guardar operación</button><span id="t-msg" class="small"></span></div>
       <div id="t-fit" class="banner info" hidden></div>
     </form>
@@ -798,7 +799,7 @@ function normalize(raw) {
   if (t.r == null) t.r = computeR(t.direction, t.entry, t.stop_loss, t.exit_price);
   const res = String(raw.result || "").toLowerCase();
   t.result = ["win", "ganada", "tp", "w"].includes(res) ? "Win" : ["loss", "perdida", "pérdida", "sl", "l"].includes(res) ? "Loss" : ["be", "breakeven"].includes(res) ? "BE" : classify(t.r ?? (t.pnl != null ? Math.sign(t.pnl) : null));
-  for (const k of ["session", "setup", "timeframe", "daily_bias", "emotion", "notes"]) t[k] = raw[k] == null ? "" : String(raw[k]).trim();
+  for (const k of ["session", "setup", "timeframe", "daily_bias", "emotion", "notes", "explicacion"]) t[k] = raw[k] == null ? "" : String(raw[k]).trim();
   t.confluences = [...new Set(tags(raw.confluences).map(canonConf))]; t.mistakes = tags(raw.mistakes);
   t.followed_plan = toBool(raw.followed_plan); t.news_nearby = toBool(raw.news_nearby);
   { const vv = String(raw.volume ?? raw.volumen ?? "").trim().toLowerCase(); t.volume = vv.startsWith("a") || vv.startsWith("h") ? "Alto" : vv.startsWith("n") ? "Normal" : vv.startsWith("b") || vv.startsWith("l") ? "Bajo" : ""; }
@@ -1606,7 +1607,7 @@ function fillForm(t) {
   set("#t-cuenta", t.cuenta || "Real"); set("#t-date", t.date); set("#t-time", t.time); set("#t-pair", t.pair); set("#t-dir", t.direction); set("#t-session", t.session); set("#t-setup", t.setup);
   set("#t-tf", t.timeframe || "M5"); set("#t-bias", t.daily_bias || "Neutral"); set("#t-entry", t.entry); set("#t-sl", t.stop_loss); set("#t-tp", t.take_profit);
   set("#t-exit", t.exit_price); set("#t-exit-time", t.exit_time); set("#t-r", t.entry == null ? t.r : ""); set("#t-pnl", t.pnl); set("#t-plan", String(t.followed_plan ?? true));
-  set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); $("#t-conf-extra").value = "";
+  set("#t-emotion", t.emotion || "Tranquilo"); set("#t-news", String(t.news_nearby ?? false)); set("#t-vol", t.volume || ""); set("#t-notes", t.notes); set("#t-expl", t.explicacion); $("#t-conf-extra").value = "";
   state.formShots = [...(t.shots || [])]; state.pendingFiles = []; state.formAI = t.ai_analysis || ""; state.autoSession = state.autoBias = false;
   $("#t-ai-out").innerHTML = state.formAI ? "<b>Análisis de la IA:</b> " + mdLite(state.formAI) : ""; renderThumbs();
   renderForm();
@@ -1626,7 +1627,7 @@ $("#t-form").addEventListener("submit", async e => {
   if (!hasPrices && num(v("#t-r")) == null) { $("#t-msg").innerHTML = `<span class="neg">Pon entrada, stop y salida, o el R conseguido.</span>`; return; }
   const raw = {cuenta: v("#t-cuenta"), fecha_estimada: state.editing && state.editing.date === v("#t-date") ? state.editing.fecha_estimada : false, date: v("#t-date"), time: v("#t-time"), pair: v("#t-pair"), direction: v("#t-dir"), session: v("#t-session"), setup: v("#t-setup"), timeframe: v("#t-tf"),
     daily_bias: v("#t-bias"), volume: v("#t-vol"), entry: v("#t-entry"), stop_loss: v("#t-sl"), take_profit: v("#t-tp"), exit_price: v("#t-exit"), exit_time: v("#t-exit-time"), r: hasPrices ? null : v("#t-r"), pnl: v("#t-pnl"),
-    followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"),
+    followed_plan: v("#t-plan"), emotion: v("#t-emotion"), news_nearby: v("#t-news"), notes: v("#t-notes"), explicacion: v("#t-expl"),
     confluences: [...sel($("#t-confs")), ...tags(v("#t-conf-extra"))], mistakes: sel($("#t-mistakes")), ejemplo: state.editing?.ejemplo, shots: [...state.formShots], ai_analysis: state.formAI || state.editing?.ai_analysis || ""};
   $("#t-save").disabled = true;
   try {
@@ -1853,7 +1854,7 @@ $("#csv-file").addEventListener("change", async e => {
   e.target.value = "";
 });
 $("#csv-export").addEventListener("click", async () => {
-  const cols = ["cuenta", "date", "time", "exit_time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes"];
+  const cols = ["cuenta", "date", "time", "exit_time", "pair", "direction", "session", "setup", "timeframe", "entry", "stop_loss", "take_profit", "exit_price", "r", "result", "pnl", "confluences", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "mistakes", "notes", "explicacion"];
   const q = v => { const s = Array.isArray(v) ? v.join(", ") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const csv = [cols.join(","), ...state.trades.map(t => cols.map(c => q(t[c])).join(","))].join("\n");
   const dl = await use("downloads");
@@ -2524,11 +2525,38 @@ $("#paste-stop").addEventListener("click", () => pasteCtl?.abort());
 document.addEventListener("click", e => {
   const g = e.target.closest("[data-goto]"); if (g) { showTab(g.dataset.goto); window.scrollTo({top: 0}); }
 });
+// Explicación de cada operación, escrita por el trader directamente en la lista
+function explCell(t) {
+  const e = (t.explicacion || "").trim();
+  return `<div data-expl-cell="${esc(t.id)}" style="min-width:200px;max-width:340px">${e ? `<div class="small" style="white-space:pre-wrap">${esc(e.length > 220 ? e.slice(0, 220) + "…" : e)}</div><button type="button" class="btn small" data-expl="${esc(t.id)}">✏️ Editar</button>` : `<button type="button" class="btn small primary" data-expl="${esc(t.id)}">✍️ Explicar</button>`}</div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-expl]");
+  if (b) {
+    const t = (state.allTrades || []).find(x => x.id === b.dataset.expl); if (!t) return;
+    const cell = b.closest("[data-expl-cell]");
+    cell.innerHTML = `<textarea rows="4" aria-label="Tu explicación de la operación" placeholder="Qué tipo de operación era, por qué entraste, cómo la gestionaste y qué piensas de ella">${esc(t.explicacion || "")}</textarea>
+      <div class="row" style="gap:6px;margin-top:4px"><button type="button" class="btn small primary" data-expl-save="${esc(t.id)}">Guardar</button><button type="button" class="btn small" data-expl-cancel>Cancelar</button></div>`;
+    state.explEditing = t.id; cell.querySelector("textarea").focus(); return;
+  }
+  if (e.target.closest("[data-expl-cancel]")) { state.explEditing = null; renderOps(); return; }
+  const sv = e.target.closest("[data-expl-save]");
+  if (sv) {
+    const t = (state.allTrades || []).find(x => x.id === sv.dataset.explSave); if (!t) return;
+    const txt = sv.closest("[data-expl-cell]").querySelector("textarea").value.trim();
+    sv.disabled = true; sv.textContent = "Guardando…";
+    t.explicacion = txt; t.created = uploadedAt(t);
+    try { if (col) await col.doc(t.id).update({explicacion: txt, created: t.created}); state.explEditing = null; renderOps(); }
+    catch (err) { sv.disabled = false; sv.textContent = "Reintentar"; sv.title = err.message || err.code || ""; }
+  }
+});
 function renderOps() {
+  if (state.explEditing && document.querySelector(`[data-expl-cell="${CSS.escape(state.explEditing)}"] textarea`)) return; // no borrar lo que está escribiendo
   renderMyStrat();
   const ts = state.trades, s = summary(ts);
   $("#o-strip").textContent = ts.length ? `${ts.length} operaciones · WR ${fmtP(s.wr)} · ${fmtR(s.totalR)}` : "";
-  $("#o-count").textContent = ts.length ? `${ts.length} en total, la última que subiste arriba` : "";
+  const sinExpl = ts.filter(t => !(t.explicacion || "").trim()).length;
+  $("#o-count").textContent = ts.length ? `${ts.length} en total, la última que subiste arriba${sinExpl ? ` · ${sinExpl} sin tu explicación` : ""}` : "";
   $("#o-empty").hidden = !(state.loaded && !ts.length) && ts.length > 0;
   $("#o-table").parentElement.hidden = !ts.length;
   const P = activeProfile();
@@ -2538,6 +2566,7 @@ function renderOps() {
     {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
     {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
     {h: "Encaje", n: 1, html: 1, f: t => { const TP = activeProfile(t.pair), f = TP ? fitScore(t, TP).score : null; return f == null ? "—" : `<span class="pill ${f >= 70 ? "up" : f < 40 ? "down" : "warn"}">${f}%</span>`; }},
+    {h: "Tu explicación", html: 1, f: t => explCell(t)},
     {h: "Confluencias", f: t => t.confluences.join(", ")},
     {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap" data-shots="${esc(t.shots.join(","))}">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<a href="/_blob/${esc(t.shots[3])}" class="small muted" data-lb-i="3">+${t.shots.length - 3}</a>` : ""}</span>`},
     {h: "Análisis", html: 1, f: t => (t.deep_analysis ? `<button class="btn" data-deep-open="${esc(t.id)}"><span class="pill ${deepGradeCls(t.deep_analysis.nota)}">${esc(t.deep_analysis.nota || "?")}</span> Ver</button>` : state.pendingDeep?.has(t.id) ? `<span class="pill warn">En cola</span>` : t.shots.length ? `<button class="btn" data-deep-run="${esc(t.id)}">Análisis a fondo</button>` : "") + ` <button class="btn small" data-rev-open="${esc(t.id)}" title="Comenta un error o una mejora y la IA te dice si tienes razón">💬 ${t.revisiones?.length ? "Comentarios (" + t.revisiones.length + ")" : "Comentar"}</button>`},
@@ -2851,7 +2880,7 @@ function deepPrompt(t) {
   return `${COACH}${myStratTxt()}
 ${stratTxt(t.pair)}
 Te paso la imagen o imágenes de UNA operación del trader en EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500).
-${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes})}` : ""}
+${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes, explicacion_del_trader: t.explicacion})}` : ""}
 ${RULE_TEXT}
 ${DEEP_GUIDE}
 Responde SOLO con un objeto JSON: {${DEEP_SCHEMA}}`;
@@ -2867,6 +2896,7 @@ function openDeep(t, focusRev = false) {
       <div class="row">${D.nota ? `<span class="pill ${deepGradeCls(D.nota)}" style="font-size:1rem;padding:4px 12px">${esc(D.nota)} · ${esc(D.puntuacion ?? "—")}/100</span>` : ""}
       <span class="pill ${t.win ? "up" : t.loss ? "down" : "warn"}">${esc(D.resultado?.estado || t.result || "Abierta")} ${t.r != null ? fmtR(t.r) : ""}</span></div></div>
     <p style="margin:0">${esc(D.resumen || "")}</p>
+    ${t.explicacion ? `<div class="banner info"><b>Tu explicación:</b> ${esc(t.explicacion)}</div>` : ""}
     ${t.shots?.length ? `<div class="thumbs">${t.shots.map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Gráfico de la operación" style="max-height:340px;max-width:100%;border-radius:4px;border:1px solid var(--line)"></a>`).join("")}</div>` : ""}
     ${D.etiquetas_leidas?.length ? `<div class="chips">${D.etiquetas_leidas.map(x => `<span class="pill">${esc(x)}</span>`).join("")}</div>` : ""}
     <dl class="levels">${[["Entrada", L.entrada], ["Stop", L.stop], ["Objetivo", L.objetivo], ["Riesgo", L.riesgo_pips != null ? L.riesgo_pips + " " + INS(t.pair).unit : null], ["Beneficio", L.beneficio_pips != null ? L.beneficio_pips + " " + INS(t.pair).unit : null], ["R:R", L.rr]].filter(x => x[1] != null).map(([k, x]) => `<dt>${k}</dt><dd>${esc(x)}</dd>`).join("")}</dl>
@@ -2927,7 +2957,7 @@ function revPrompt(t, comentario) {
 El trader tiene TDAH: sé claro, ordenado y concreto; nada de rodeos.
 Revisa SU comentario sobre una operación ya hecha. Mira las capturas con atención (regla de la herramienta de posición: zona NARANJA = stop loss, zona AZUL = take profit, la línea entre las dos = entrada) y dile con honestidad si su comentario es correcto: "Bien visto" si acierta, "En parte" si tiene algo de razón pero hay más, "No era un error" si lo que señala estaba bien hecho (explica por qué). Si ves otro error más importante que no ha mencionado, díselo también en la valoración. Juzga el PROCESO, no el resultado. Usa su estrategia como referencia.
 ESTRATEGIA DEL TRADER: ${JSON.stringify(P ? {nombre: P.nombre, pasos: P.pasos, checklist: P.checklist, reglas: P.reglas, riesgo: P.riesgo} : {})}
-OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}
+OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes, explicacion_del_trader: t.explicacion})}
 ${t.deep_analysis ? "ANÁLISIS A FONDO PREVIO: " + JSON.stringify({nota: t.deep_analysis.nota, resumen: t.deep_analysis.resumen, leccion: t.deep_analysis.leccion}) : ""}
 ${(t.revisiones || []).filter(r => r.respuesta).length ? "COMENTARIOS ANTERIORES: " + JSON.stringify(t.revisiones.filter(r => r.respuesta).map(r => ({comentario: r.comentario, veredicto: r.respuesta.veredicto}))) : ""}
 COMENTARIO DEL TRADER: «${comentario}»
@@ -2974,7 +3004,7 @@ El trader ha escrito un MENSAJE sobre una operación ya hecha. Puede ser una PRE
 - APUNTAR EN «COSAS QUE MEJORAR» cuando el comentario revele un error o hábito que debe corregir (o lo reconozca él mismo): escribe una mejora concreta y accionable en una frase («Esperar el cierre de la vela de M5 antes de entrar»), no genérica. No repitas una que ya esté en su lista.
 - Puedes hacer las dos cosas, una o ninguna (si es solo una nota sin efecto, dilo).
 Mira las capturas (zona NARANJA = stop loss, zona AZUL = take profit, línea entre ambas = entrada) para comprobar lo que dice.
-OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}
+OPERACIÓN: ${JSON.stringify({cuenta: t.cuenta, fecha: t.date, hora: t.time, instrumento: t.pair, direccion: t.direction, temporalidad: t.timeframe, setup: t.setup, entrada: t.entry, stop: t.stop_loss, objetivo: t.take_profit, salida: t.exit_price, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes, explicacion_del_trader: t.explicacion})}
 ANÁLISIS A FONDO ACTUAL: ${D ? JSON.stringify({nota: D.nota, puntuacion: D.puntuacion, pasos: (D.pasos || []).map(p => ({paso: p.paso, valoracion: p.valoracion, nota: p.nota}))}) : "NO EXISTE (ajustar_puntuacion debe ser false)"}
 SU LISTA ACTUAL DE COSAS QUE MEJORAR: ${JSON.stringify((state.mejoras?.items || []).filter(i => !i.hecho).map(i => i.texto))}
 ESTRATEGIA DEL TRADER EN ${MK_LBL[mkOf(t.pair)].toUpperCase()}: ${JSON.stringify((p => p ? {nombre: p.nombre, pasos: p.pasos, checklist: p.checklist, reglas: p.reglas} : {})(activeProfile(t.pair)))}
@@ -3127,7 +3157,7 @@ $("#o-table").addEventListener("click", async e => {
   try {
     const blobs = []; for (const id of t.shots) { const x = await fetchBlob(id); if (x) blobs.push(x); }
     if (!blobs.length) throw {message: "no se pudieron leer las imágenes"};
-    const a = await state.sample.json(analysisPrompt(`Datos ya registrados de esta operación: ${JSON.stringify({fecha: t.date, par: t.pair, dir: t.direction, setup: t.setup, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes})}`), {images: blobs.slice(0, state.imgLimit || 5), modelTier: "complex"});
+    const a = await state.sample.json(analysisPrompt(`Datos ya registrados de esta operación: ${JSON.stringify({fecha: t.date, par: t.pair, dir: t.direction, setup: t.setup, r: t.r, resultado: t.result, confluencias: t.confluences, notas: t.notes, explicacion_del_trader: t.explicacion})}`), {images: blobs.slice(0, state.imgLimit || 5), modelTier: "complex"});
     const text = [a?.analisis, a?.estrategia].filter(Boolean).join("\n\n");
     if (!text) throw {code: "invalid_json"};
     await col.doc(t.id).update({ai_analysis: text});
@@ -3675,9 +3705,9 @@ function traderComments(t, max = 700) {
   if (!cs.length) return "";
   const s = cs.join(" / "); return s.length > max ? "…" + s.slice(-max) : s;
 }
-const NOTES_RULE = `En las operaciones, «notes» y «comentarios_trader» son lo que el propio trader ha explicado: qué tipo de operación era, por qué entró, cómo la gestionó y qué piensa de ella. Tenlo SIEMPRE en cuenta: cuando pregunte por lo que ha ido haciendo, usa sus propias explicaciones (cítalas cuando ayude) y relaciónalas con los resultados.`;
+const NOTES_RULE = `En las operaciones, «explicacion» (lo que escribe él para cada operación: tipo de operación, por qué entró y cómo la gestionó), «comentarios_trader» y sus «notes» son lo que el propio trader ha explicado: qué tipo de operación era, por qué entró, cómo la gestionó y qué piensa de ella. Tenlo SIEMPRE en cuenta: cuando pregunte por lo que ha ido haciendo, usa sus propias explicaciones (cítalas cuando ayude) y relaciónalas con los resultados.`;
 function compactCSV(ts, max = 400) {
-  const cols = ["cuenta", "date", "time", "exit_time", "pair", "direction", "session", "setup", "timeframe", "rr_plan", "r", "result", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "confluences", "mistakes", "notes", "comentarios_trader", "analisis_ia"];
+  const cols = ["cuenta", "date", "time", "exit_time", "pair", "direction", "session", "setup", "timeframe", "rr_plan", "r", "result", "daily_bias", "followed_plan", "emotion", "volume", "news_nearby", "confluences", "mistakes", "explicacion", "notes", "comentarios_trader", "analisis_ia"];
   return [cols.join(","), ...ts.slice(-max).map(t => cols.map(c => { const v = c === "analisis_ia" ? (t.ai_analysis || "").slice(0, 500) : c === "comentarios_trader" ? traderComments(t) : c === "rr_plan" ? (t.rr == null ? "" : t.rr.toFixed(2)) : t[c]; const s = Array.isArray(v) ? v.join("|") : v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
 }
 const DRAW_RULE = `LECTURA DE LOS DIBUJOS DEL TRADER EN LOS GRÁFICOS (obligatoria):
@@ -3728,12 +3758,12 @@ $("#me-review").addEventListener("click", async () => {
   const mk = meMk(), st = $("#me-st"), btn = $("#me-review");
   const texto = ($("#me-txt").value || "").trim();
   const ts = mkTrades(mk, true).filter(t => t.cuenta === "Real" || t.notes || t.revisiones?.length);
-  const explained = ts.filter(t => (t.notes && !/^Creada automáticamente|^Importada de/.test(t.notes)) || traderComments(t));
+  const explained = ts.filter(t => t.explicacion || (t.notes && !/^Creada automáticamente|^Importada de/.test(t.notes)) || traderComments(t));
   if (!texto) { st.textContent = "Escribe y guarda primero tu explicación."; $("#me-txt").focus(); return; }
   if (!state.sample) { st.textContent = "La IA no está disponible en esta vista: abre la página en claude.ai con tu cuenta."; return; }
   btn.disabled = true; st.dataset.busy = "1"; st.textContent = `La IA está contrastando tu explicación con ${ts.length} operaciones (${explained.length} con explicaciones tuyas)…`;
   const prompt = `${COACH}
-El trader ha escrito con sus palabras su estrategia de ${MK_LBL[mk]}. Contrástala con sus operaciones REALES (y con las de backtesting solo para validar el modelo de entrada) y, sobre todo, con lo que él mismo explica en cada operación (columnas «notes» y «comentarios_trader»). Tiene TDAH: frases cortas y concretas.
+El trader ha escrito con sus palabras su estrategia de ${MK_LBL[mk]}. Contrástala con sus operaciones REALES (y con las de backtesting solo para validar el modelo de entrada) y, sobre todo, con lo que él mismo explica en cada operación (columnas «explicacion», «comentarios_trader» y «notes»). Tiene TDAH: frases cortas y concretas.
 1) Divide su explicación en reglas concretas y, para cada una, di si se está cumpliendo en sus operaciones: "si", "parcial", "no" o "sin_datos", con cuántas operaciones lo comprueban, el win rate de esas operaciones si se puede calcular, y la evidencia (fechas y lo que él escribió).
 2) Busca cosas que REPITE en sus explicaciones o que se ven una y otra vez en sus operaciones ganadoras y que NO están en su texto (p. ej. siempre espera el cierre de la vela, siempre opera tras barrer Asia, mueve el stop a BE en 1R). Solo lo que aparezca en 3 o más operaciones; cita las fechas. Para cada una, escribe una frase lista para añadir a su explicación, con su estilo.
 3) Señala dónde lo que hace contradice lo que escribe (con fechas y R).
@@ -3800,7 +3830,7 @@ $("#c-review").addEventListener("click", () => {
   askAI($("#c-review-out"), `${COACH}${myStratTxt()}
 ${stratTxt()}Valora también cuánto encaja esta operación con su estrategia.
 
-Revisa esta operación: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, sesion: t.session, setup: t.setup, r: t.r, resultado: t.result, sesgo: t.daily_bias, confluencias: t.confluences, emocion: t.emotion, plan: t.followed_plan, noticia: t.news_nearby, errores: t.mistakes, notas: t.notes, comentarios_trader: traderComments(t), rrPlaneado: t.rr?.toFixed(2)})}
+Revisa esta operación: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, sesion: t.session, setup: t.setup, r: t.r, resultado: t.result, sesgo: t.daily_bias, confluencias: t.confluences, emocion: t.emotion, plan: t.followed_plan, noticia: t.news_nearby, errores: t.mistakes, notas: t.notes, explicacion_del_trader: t.explicacion, comentarios_trader: traderComments(t), rrPlaneado: t.rr?.toFixed(2)})}
 Diagnóstico de reglas: ${x.head}. En contra: ${x.neg.join("; ") || "nada"}. A favor: ${x.pos.join("; ") || "nada"}. Le faltaba: ${x.missing.join(", ") || "nada"}. Nota de proceso ${x.q}/100.
 Mis estadísticas: WR ${fmtP(s.wr)}, expectativa ${fmtR(s.exp)}. Mi checklist A+: ${D.key.join(", ") || "sin datos"}.
 Dime: 1) por qué salió así, 2) si la ejecución fue buena independientemente del resultado, 3) qué haría distinto un profesional, 4) la lección en una frase.`);
