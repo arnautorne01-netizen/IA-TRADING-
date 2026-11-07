@@ -22,6 +22,8 @@ Asistente personal de trading que:
 `web/bitacora.html` es la versión web, publicada en claude.ai: https://claude.ai/artifact/CpdChxZuQLpMxdAjCdZSfQ
 
 - La pestaña **Resumen semanal** resume cada semana (lunes a domingo) solo con tus operaciones reales, con tres vistas: Forex, Futuros y Conjunto (que además compara Forex frente a Futuros cada semana): número de operaciones, ganadas/perdidas/BE, win rate, R total, expectativa, profit factor, R:R planificado, setups usados (estrategia) con su WR, confluencias de las ganadoras y a qué horas llegaron los TP (usa la nueva «Hora de salida» si la apuntas o la importas del bróker; si no, la hora de entrada).
+- En el resumen semanal puedes **preguntarle a la IA** por tus semanas (qué cambió, por qué perdiste un día, qué tipo de operación te funciona…).
+- Lo que explicas de cada operación (la nota «Tu explicación» y tus comentarios en «💬 Comentar») se envía siempre a la IA, así que lo tiene en cuenta cuando le preguntas por lo que has ido haciendo, en cualquier chat.
 - El journal se guarda en tu cuenta (privado) y el análisis con IA usa tu cuenta de Claude, sin claves de API.
 - El sesgo y el % de subida/bajada se calculan con 60% fundamental, 30% técnico y 10% sentimiento. Se genera cada día laborable a las 7:50 (Madrid) y se actualiza a las 11:20 y a las 16:20 con tareas programadas que buscan las noticias en internet. Cada mañana se comprueba si el día anterior acertó.
 
