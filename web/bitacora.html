@@ -1023,12 +1023,19 @@ async function boot() {
 }
 function banner(msg) { const b = $("#global-banner"); b.textContent = msg; b.hidden = false; }
 
+// Cuándo se subió la operación: campo «created»; si no lo tiene, sale del id (t_ + marca de tiempo) o de la última edición
+function uploadedAt(t) {
+  if (t.created) return t.created;
+  const m = /^t_([0-9a-z]{8})/.exec(t.id || ""); if (m) { const ms = parseInt(m[1], 36); if (ms > 1.5e12 && ms < 4e12) return new Date(ms).toISOString(); }
+  return t.updated || (t.date ? t.date + "T" + (t.time || "00:00") + ":00" : "");
+}
 async function saveTrade(raw, id) {
   const t = normalize(raw);
   const data = {kind: "trade", ...t, updated: new Date().toISOString()};
   const prev = id && (state.allTrades || []).find(x => x.id === id);
   if (prev?.revisiones?.length) data.revisiones = prev.revisiones;
   if (!data.deep_analysis && prev?.deep_analysis) data.deep_analysis = prev.deep_analysis;
+  data.created = prev?.created || (prev ? uploadedAt(prev) : null) || data.updated;
   if (!col) { // modo sin guardar
     const lid = "local" + Math.random().toString(36).slice(2);
     state.allTrades.push(enrich({id: lid, ...data})); applyCuentaView(); renderAll(); return lid;
@@ -2511,11 +2518,12 @@ document.addEventListener("click", e => {
 function renderOps() {
   const ts = state.trades, s = summary(ts);
   $("#o-strip").textContent = ts.length ? `${ts.length} operaciones · WR ${fmtP(s.wr)} · ${fmtR(s.totalR)}` : "";
-  $("#o-count").textContent = ts.length ? `${ts.length} en total, la más reciente arriba` : "";
+  $("#o-count").textContent = ts.length ? `${ts.length} en total, la última que subiste arriba` : "";
   $("#o-empty").hidden = !(state.loaded && !ts.length) && ts.length > 0;
   $("#o-table").parentElement.hidden = !ts.length;
   const P = activeProfile();
   table($("#o-table"), [
+    {h: "Subida", f: t => { const u = uploadedAt(t); return u && u.length > 10 ? new Date(u).toLocaleString("es-ES", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) : "—"; }},
     {h: "Fecha", f: t => (t.fecha_estimada ? "≈ " : "") + t.date + (t.time ? " " + t.time : "")}, {h: "Cuenta", html: 1, f: t => cuentaPill(t)}, {h: "Operación", f: t => `${t.pair} ${t.direction}`}, {h: "Sesión", f: t => t.session},
     {h: "Setup", f: t => t.setup}, {h: "R", n: 1, f: t => fmtR(t.r), cls: t => cls(t.r)},
     {h: "Res.", html: 1, f: t => `<span class="pill ${t.win ? "up" : t.loss ? "down" : ""}">${esc(t.result || "—")}</span>`},
@@ -2524,7 +2532,7 @@ function renderOps() {
     {h: "Imágenes", html: 1, f: t => `<span class="row" style="gap:4px;flex-wrap:nowrap" data-shots="${esc(t.shots.join(","))}">${t.shots.slice(0, 3).map(id => `<a href="/_blob/${esc(id)}" target="_blank" rel="noopener"><img src="/_blob/${esc(id)}" alt="Imagen de la operación" style="height:36px;border-radius:3px;border:1px solid var(--line)"></a>`).join("")}${t.shots.length > 3 ? `<a href="/_blob/${esc(t.shots[3])}" class="small muted" data-lb-i="3">+${t.shots.length - 3}</a>` : ""}</span>`},
     {h: "Análisis", html: 1, f: t => (t.deep_analysis ? `<button class="btn" data-deep-open="${esc(t.id)}"><span class="pill ${deepGradeCls(t.deep_analysis.nota)}">${esc(t.deep_analysis.nota || "?")}</span> Ver</button>` : state.pendingDeep?.has(t.id) ? `<span class="pill warn">En cola</span>` : t.shots.length ? `<button class="btn" data-deep-run="${esc(t.id)}">Análisis a fondo</button>` : "") + ` <button class="btn small" data-rev-open="${esc(t.id)}" title="Comenta un error o una mejora y la IA te dice si tienes razón">💬 ${t.revisiones?.length ? "Comentarios (" + t.revisiones.length + ")" : "Comentar"}</button>`},
     {h: "", html: 1, f: t => `<span class="row" style="gap:6px;flex-wrap:nowrap" data-row="${esc(t.id)}"><button class="btn" data-edit="${esc(t.id)}">Editar</button><button class="btn danger" data-del="${esc(t.id)}">Borrar</button></span>`},
-  ], [...ts].reverse());
+  ], [...ts].sort((a, b) => String(uploadedAt(b)).localeCompare(String(uploadedAt(a)))));
 }
 $("#o-table").addEventListener("click", async e => {
   const d = e.target.closest("[data-del]");
