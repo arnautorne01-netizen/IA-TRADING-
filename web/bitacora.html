@@ -1023,11 +1023,11 @@ async function boot() {
 }
 function banner(msg) { const b = $("#global-banner"); b.textContent = msg; b.hidden = false; }
 
-// Cuándo se subió la operación: campo «created»; si no lo tiene, sale del id (t_ + marca de tiempo) o de la última edición
+// Cuándo se subió la operación: campo «created»; si no lo tiene, la hora a la que se guardó («updated»)
+// y, en último caso, la fecha de la operación. Se normaliza a ISO para poder ordenar.
 function uploadedAt(t) {
-  if (t.created) return t.created;
-  const m = /^t_([0-9a-z]{8})/.exec(t.id || ""); if (m) { const ms = parseInt(m[1], 36); if (ms > 1.5e12 && ms < 4e12) return new Date(ms).toISOString(); }
-  return t.updated || (t.date ? t.date + "T" + (t.time || "00:00") + ":00" : "");
+  const v = t.created || t.updated || (t.date ? t.date + "T" + (t.time || "00:00") + ":00Z" : "");
+  const ms = Date.parse(v); return Number.isFinite(ms) ? new Date(ms).toISOString() : "";
 }
 async function saveTrade(raw, id) {
   const t = normalize(raw);
