@@ -476,6 +476,14 @@ details summary{cursor:pointer;font-weight:600}
       <ul class="clean" id="mej-list" style="display:flex;flex-direction:column;gap:6px"></ul>
       <details class="small" id="mej-done-wrap" hidden><summary class="muted">Ya corregidas</summary><ul class="clean" id="mej-done"></ul></details>
     </div>
+    <div class="panel" id="me-panel">
+      <div class="panel-head"><h3>✍️ Mi estrategia explicada por mí</h3><div class="seg" id="me-mk" role="group" aria-label="Estrategia de qué mercado" style="margin:0"></div></div>
+      <p class="small muted" style="margin:0">Explica con tus palabras cómo operas: qué buscas, cómo entras, dónde pones el stop y el objetivo, cuándo no operas. La IA lo tiene en cuenta en todos sus análisis y chats. Con el tiempo, pulsa «Contrastar con mis operaciones»: la IA mira lo que explicas en cada operación y te dice qué reglas se están cumpliendo, cuáles no, y qué cosas repites que aún no has escrito aquí.</p>
+      <label class="sr-only" for="me-txt">Tu estrategia</label>
+      <textarea id="me-txt" rows="6" placeholder="Ej.: Opero EURUSD en Londres (9-12 h). Espero que barran el mínimo o el máximo de Asia, busco un BOS en M5 a favor del sesgo diario y entro en el FVG o iFVG que deja. Stop detrás del barrido, objetivo mínimo 2R o la siguiente liquidez. No opero con noticia de alto impacto en los próximos 30 minutos."></textarea>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="me-save">Guardar mi explicación</button><button type="button" class="btn" id="me-review">Contrastar con mis operaciones</button><span class="small muted" id="me-st" role="status"></span></div>
+      <div id="me-out" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
     <div class="panel" id="check-panel">
       <div class="panel-head"><h3>Chequeo antes de entrar</h3><span class="small muted">Sube la captura ANTES de abrir la operación</span></div>
       <label class="drop" for="check-file" id="check-drop" style="padding:22px 18px"><b>Suelta aquí la captura de la entrada que estás pensando</b>
@@ -952,7 +960,7 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profiles: {fx: null, fut: null}, stratChats: {fx: null, fut: null}, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
+const state = {myStrat: {fx: null, fut: null}, db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profiles: {fx: null, fut: null}, stratChats: {fx: null, fut: null}, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
 // Una estrategia (y su conversación) por mercado: Forex y Futuros
 const MK_LBL = {fx: "Forex", fut: "Futuros"};
 const mkOf = pair => INS(pair)?.grupo === "fut" ? "fut" : "fx";
@@ -1000,6 +1008,7 @@ async function boot() {
     state.pendingQ = snap.docs.filter(d => d.data()?.kind === "pending_question").length;
     for (const mk of ["fx", "fut"]) { const prof = snap.docs.find(d => d.id === PROF_DOC(mk)); state.profiles[mk] = prof ? prof.data() : null; }
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
+    for (const mk of ["fx", "fut"]) { const ms = snap.docs.find(d => d.id === MY_DOC(mk)); state.myStrat[mk] = ms ? ms.data() : null; }
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
     state.loaded = true;
@@ -1211,7 +1220,7 @@ ${compactCSV(ts, 150)}`;
 }
 function nqPrompt(q, C, ts) {
   const P = activeProfile(), hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 Eres además un analista cuantitativo. El trader tiene TDAH: responde claro y ordenado (máximo 12 líneas), con CIFRAS CONCRETAS sacadas de los datos (win rate, R, esperanza por operación, profit factor, número de operaciones), y termina con una línea «Haz esto: …» con la acción más rentable en una frase.
 Reglas: usa SOLO los datos de abajo (no inventes números; si hace falta un cálculo, hazlo y enséñalo en una línea). Recuerda que esperanza = win rate × ganancia media − (1 − win rate) × pérdida media, y que más win rate no siempre es más beneficio. Avisa cuando un grupo tenga pocas operaciones (menos de 10) y no saques conclusiones fuertes con eso. Distingue Real de Backtest. Si preguntan por riesgo por operación, razona con el drawdown máximo y la racha de pérdidas, y recomienda un % prudente (0,5-1% por operación salvo que los datos justifiquen otra cosa).
 ESTRATEGIA DETECTADA: ${JSON.stringify(P ? {nombre: P.nombre, pasos: P.pasos, riesgo: P.riesgo} : {})}
@@ -1389,7 +1398,7 @@ async function analyzeWeek(w) {
   if (!r) return;
   const f = q => ({ops: q.trades, ganadas: q.wins.length, perdidas: q.losses, be: q.be, wr: q.wr == null ? null : +q.wr.toFixed(1), r_total: +q.totalR.toFixed(2), esperanza: q.exp == null ? null : +q.exp.toFixed(2), rr_planeado_medio: q.rrPlan == null ? null : +q.rrPlan.toFixed(2), profit_factor: q.pf == null ? null : +q.pf.toFixed(2), hora_tp_habitual: q.topH});
   const ts = [...r.ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  const prompt = `${COACH}
+  const prompt = `${COACH}${myStratTxt()}
 Haz el RESUMEN SEMANAL del trading REAL del trader para la semana del ${weekLabel(w)} (${mk === "todo" ? "Forex y Futuros juntos" : MK_LBL[mk]}). Tiene TDAH: claro, ordenado, con cifras de los datos y máximo 22 líneas. No inventes números; si la muestra es pequeña, dilo. Usa lo que él explicó en cada operación (notes y comentarios_trader).
 ESTA SEMANA: ${JSON.stringify(f(r))}
 ${prev ? `SEMANA ANTERIOR (${weekLabel(prev.w)}): ${JSON.stringify(f(prev))}` : "Es la primera semana registrada."}
@@ -1443,7 +1452,7 @@ ${compactCSV(ts, 250)}`;
 function wqPrompt(q, C) {
   const hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
   const P = state.swCtx?.mk === "fut" ? state.profiles.fut : state.swCtx?.mk === "fx" ? state.profiles.fx : null;
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 El trader tiene TDAH: responde claro y ordenado (máximo 14 líneas), con cifras concretas de los datos, y termina con una línea «Haz esto: …» con la acción más útil en una frase.
 Contesta sobre su evolución SEMANA A SEMANA: compara semanas cuando tenga sentido, habla de días y operaciones concretas (fecha, par, R) y usa lo que él mismo explicó en cada operación («notes» y «comentarios_trader») para entender qué tipo de operación hizo y por qué. Usa SOLO estos datos; si algo no está, dilo. Avisa si una semana tiene pocas operaciones.
 ${P ? "ESTRATEGIA DEL TRADER: " + JSON.stringify({nombre: P.nombre, pasos: P.pasos, reglas: P.reglas}) : ""}
@@ -2110,7 +2119,7 @@ OPERACIONES REALES DE HOY: ${hoy.length} (${hoy.filter(t => t.win).length} ganad
 }
 function checkPrompt() {
   const P = activeProfile();
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 ${stratTxt()}
 CHECKLIST DEL TRADER: ${JSON.stringify(P?.checklist || [])}
 REGLAS DEL TRADER: ${JSON.stringify(P?.reglas || [])}
@@ -2516,6 +2525,7 @@ document.addEventListener("click", e => {
   const g = e.target.closest("[data-goto]"); if (g) { showTab(g.dataset.goto); window.scrollTo({top: 0}); }
 });
 function renderOps() {
+  renderMyStrat();
   const ts = state.trades, s = summary(ts);
   $("#o-strip").textContent = ts.length ? `${ts.length} operaciones · WR ${fmtP(s.wr)} · ${fmtR(s.totalR)}` : "";
   $("#o-count").textContent = ts.length ? `${ts.length} en total, la última que subiste arriba` : "";
@@ -2582,7 +2592,7 @@ $("#t-thumbs").addEventListener("click", e => {
 function analysisPrompt(extra) {
   const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
   const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 ${stratTxt()}
 Te paso la imagen o imágenes del gráfico de UNA operación de EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500) (pueden ser antes de entrar, durante y el resultado).
 ${extra || ""}
@@ -2648,7 +2658,7 @@ async function runImageAnalysis() {
 function autoPrompt(n) {
   const known = [...new Set([...CONFLUENCES, ...state.trades.flatMap(t => t.confluences)])];
   const setups = [...new Set(state.trades.map(t => t.setup).filter(Boolean))];
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 ${stratTxt()}
 Te paso ${n} ${n === 1 ? "imagen" : "imágenes"} de gráficos del trader (EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500)) (numeradas del 1 al ${n} en el orden en que te llegan). Pueden ser de UNA operación (antes, durante, resultado) o de VARIAS operaciones distintas. Agrúpalas por operación: imágenes del mismo par, misma zona de precio y mismas fechas son la misma operación.
 Para cada operación detecta TODO lo que puedas leer del gráfico: par, dirección, temporalidad, fecha y hora de entrada (del eje de tiempo o de las etiquetas), entrada, stop, objetivo y salida (de la herramienta de posición, líneas dibujadas o etiquetas de precio), resultado, y tu lectura profesional: contexto y tendencia, estructura (máximos y mínimos, BOS/CHoCH), liquidez barrida, FVG e iFVG (un iFVG es un FVG invertido: el precio cierra a través de él y pasa a funcionar como zona contraria; si el trader lo etiqueta «ifvg» o se ve así, usa la confluencia «iFVG», no «FVG»), order blocks, soportes y resistencias, volumen si se ve, sesión, y qué tipo de operativa refleja.
@@ -2838,7 +2848,7 @@ const DEEP_SCHEMA = `"analisis_profundo":{"nota":"A+|A|B|C|D","puntuacion":0-100
 "leccion":"la lección en una frase"}`;
 const DEEP_GUIDE = `ANÁLISIS A FONDO: como un mentor de Smart Money / ICT que corrige a su alumno, revisa la operación paso a paso. Lee TODAS las etiquetas y zonas que el trader ha dibujado (OB, FVG, iFVG, BOS, CHoCH, liquidez, mínimos/máximos de Asia, temporalidad de cada zona) y úsalas. Sé exigente y concreto: cita precios, horas y velas; di si el stop está protegido por estructura o expuesto a un barrido, si la zona es de calidad (frescura, desplazamiento, temporalidad), si hubo confirmación real antes de entrar, si el R:R compensa y si el momento (sesión, noticias, hora) era bueno. La puntuación juzga el PROCESO, no el resultado: una ganadora mal ejecutada puede sacar C y una perdedora bien ejecutada puede sacar A.`;
 function deepPrompt(t) {
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 ${stratTxt(t.pair)}
 Te paso la imagen o imágenes de UNA operación del trader en EURUSD, GBPUSD, DXY, Nasdaq 100 (NAS100) o S&P 500 (SPX500).
 ${t ? `Datos ya registrados: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, temporalidad: t.timeframe, entrada: t.entry, sl: t.stop_loss, tp: t.take_profit, resultado: t.result, r: t.r, setup: t.setup, confluencias: t.confluences, notas: t.notes})}` : ""}
@@ -2913,7 +2923,7 @@ function revSection(t) {
 }
 function revPrompt(t, comentario) {
   const P = activeProfile(t.pair);
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 El trader tiene TDAH: sé claro, ordenado y concreto; nada de rodeos.
 Revisa SU comentario sobre una operación ya hecha. Mira las capturas con atención (regla de la herramienta de posición: zona NARANJA = stop loss, zona AZUL = take profit, la línea entre las dos = entrada) y dile con honestidad si su comentario es correcto: "Bien visto" si acierta, "En parte" si tiene algo de razón pero hay más, "No era un error" si lo que señala estaba bien hecho (explica por qué). Si ves otro error más importante que no ha mencionado, díselo también en la valoración. Juzga el PROCESO, no el resultado. Usa su estrategia como referencia.
 ESTRATEGIA DEL TRADER: ${JSON.stringify(P ? {nombre: P.nombre, pasos: P.pasos, checklist: P.checklist, reglas: P.reglas, riesgo: P.riesgo} : {})}
@@ -2955,7 +2965,7 @@ document.addEventListener("submit", e => {
 const ACT_SCHEMA = `{"respuesta":"tu respuesta al trader: si te pregunta algo, contéstalo bien (hasta 10 líneas, con pasos o viñetas si ayuda, puedes usar **negritas** y saltos de línea); si es un comentario, di qué has decidido hacer y por qué","tipo_mensaje":"pregunta|comentario|ambos","acciones":{"ajustar_puntuacion":true|false,"nueva_nota":"A+|A|A-|B|C|D|null","nueva_puntuacion":0-100|null,"pasos_corregidos":[{"paso":"nombre exacto del paso del análisis a fondo","valoracion":"bien|mejorable|mal","nota":0-10,"lectura":"lectura corregida"}],"motivo_ajuste":"por qué cambia la nota, o null","anadir_a_mejorar":"una mejora concreta y accionable para su lista, o null","categoria":"Entrada|Stop|Objetivo|Gestión|Timing|Análisis|Psicología|null"}}`;
 function actPrompt(t, comentario) {
   const D = t.deep_analysis;
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 El trader tiene TDAH: sé claro y breve.
 El trader ha escrito un MENSAJE sobre una operación ya hecha. Puede ser una PREGUNTA (sobre esta operación, su estrategia, un concepto como iFVG, BOS u order block, la gestión, el riesgo, qué haría un profesional…), un COMENTARIO (un dato, un error, algo que no se vio) o las dos cosas. Sé flexible: entiende lo que quiere aunque lo escriba de forma informal o con faltas.
 - Si PREGUNTA algo, contéstalo siempre de forma directa y útil en "respuesta", usando las capturas, los datos de la operación, su estrategia y la conversación anterior. Si no se puede saber con lo que hay, dilo y explica qué haría falta.
@@ -3218,7 +3228,7 @@ function renderStratChat() {
 async function saveStratChat(C, mk = curMk()) { state.stratChats[mk] = C; renderStratChat(); if (col) { try { await col.doc(CHAT_DOC(mk)).set({kind: CHAT_DOC(mk), mercado: mk, ...C}); } catch {} } }
 function sqPrompt(q, C) {
   const P = activeProfile(), hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 El trader tiene TDAH y se le olvidan los detalles de su propia estrategia: contesta CORTO y CLARO (máximo 8 líneas), con pasos numerados o viñetas cuando ayude, sin rodeos, y termina con una línea «Recuerda: …» con lo más importante en una frase. Usa SOLO su estrategia detectada y sus operaciones; si algo no está en los datos, dilo y no lo inventes.
 ESTRATEGIA DETECTADA: ${JSON.stringify(P || {})}
 MERCADO: ${MK_LBL[curMk()]} (el trader tiene una estrategia distinta para cada mercado; habla solo de esta).
@@ -3258,7 +3268,7 @@ function fixPrompt(txt, C) {
   const P = {...(state.profile || activeProfile() || {})}; delete P.correcciones;
   const prevFix = (state.profile?.correcciones || []).filter(c => !c.deshecha).map(c => `- ${c.texto}`).join("\n");
   const hist = (C.mensajes || []).slice(-10).map(m => `${m.rol === "yo" ? "Trader" : "IA"}: ${m.texto}`).join("\n");
-  return `${COACH}
+  return `${COACH}${myStratTxt()}
 El trader dice que has entendido MAL algo de SU ESTRATEGIA y te lo corrige. Tiene TDAH: contesta CORTO y CLARO (máximo 8 líneas) y termina con una línea «Recuerda: …».
 Cómo decidir (con criterio, sin darle la razón por complacerle):
 1. Si corrige CÓMO OPERA (sus reglas, cómo entra, qué busca, dónde pone el stop o el objetivo, qué temporalidad, instrumento o sesión usa, cómo gestiona): él lo sabe mejor que tú. Dale la razón y CAMBIA los apartados afectados para que describan su estrategia real. Cambia también todo lo que dependa de eso para que quede coherente (si cambia el modelo de entrada, revisa "pasos" y "checklist"; si cambia el stop, "riesgo.stop" y la comprobación del stop en "checklist").
@@ -3415,7 +3425,7 @@ async function detectStrategy() {
     const lim = await state.sample.limits().catch(() => null);
     if (lim?.images) images = await shotBlobs(ts, Math.min(5, lim.images.maxCount));
   } catch {}
-  const prompt = `${COACH}
+  const prompt = `${COACH}${myStratTxt()}
 
 Tu tarea: detectar la ESTRATEGIA real de este trader en ${MK_LBL[curMk()].toUpperCase()} (${curMk() === "fut" ? "futuros de índices: Nasdaq 100 y S&P 500" : "divisas: EURUSD, GBPUSD y DXY"}) a partir de su journal. Tiene una estrategia DISTINTA para el otro mercado: aquí solo cuentan estas operaciones. Detecta: qué hace realmente (no lo que dice que hace), en qué condiciones gana y en cuáles pierde, y sus puntos clave. Basa cada afirmación en los datos y cita cifras (WR, R, nº de operaciones).
 ${ts.some(t => t.ejemplo) ? "AVISO: parte de las operaciones son de ejemplo (inventadas)." : ""}
@@ -3621,7 +3631,7 @@ $("#b-ai").addEventListener("click", async () => {
   const ts = realTrades();
   if (!ts.length) { $("#b-ai-out").textContent = "Aún no hay operaciones reales: el análisis de comportamiento solo usa trading real (el backtesting no refleja tus emociones ni tu frecuencia real)."; return; }
   const P = behaviorPatterns(ts);
-  const prompt = `${COACH}
+  const prompt = `${COACH}${myStratTxt()}
 ${stratTxt()}
 Eres también especialista en psicología del trading. Analiza el COMPORTAMIENTO de este trader (no su análisis técnico): hábitos, sesgos psicológicos (revancha, exceso de confianza, miedo a perder, aversión a cerrar pérdidas, FOMO, sobreoperar, impaciencia), disciplina y gestión emocional. Basa cada afirmación en los datos y cita cifras.
 IMPORTANTE: estas son SOLO sus operaciones de trading real (${ts.length}). Además tiene ${(state.allTrades || []).length - ts.length} operaciones de backtesting que NO debes usar para hablar de frecuencia, horarios, rachas ni emociones. Con pocas operaciones reales, dilo claramente y no saques conclusiones fuertes.
@@ -3674,6 +3684,73 @@ const DRAW_RULE = `LECTURA DE LOS DIBUJOS DEL TRADER EN LOS GRÁFICOS (obligator
 - RECTÁNGULO con una palabra dentro (FVG, iFVG, OB, a veces con su temporalidad, p. ej. «OB 1H» o «FVG 4H»): es una ZONA. Significa que el precio LLEGÓ A esa zona y la tocó (el FVG, el iFVG o el OB que ponga). NO es un barrido de liquidez. La confluencia es la de la zona (Order Block, FVG o iFVG), nunca «Liquidez barrida».
 - BARRIDO DE LIQUIDEZ: SOLO cuando hay una LÍNEA marcada con una etiqueta de liquidez: BSL, SSL, PDH, PDL, PWH, PWL, máximo o mínimo de Asia, de Londres o de Nueva York, o máximos y mínimos de sesión; y el precio la supera (con mecha o cierre). Solo entonces es «Liquidez barrida» (y además PDH/PDL o Asia High/Low si es el caso). El trader siempre marca la liquidez con una línea: si no hay línea con etiqueta, NO supongas que hubo barrido.
 - Lo que no esté marcado ni se vea con claridad, no lo inventes.`;
+// =====================================================================
+// Mi estrategia explicada por mí (una por mercado) y contraste con lo que explica en cada operación
+// =====================================================================
+const MY_DOC = mk => mk === "fut" ? "my_strategy_fut" : "my_strategy";
+function myStratTxt() {
+  const parts = ["fx", "fut"].map(mk => { const t = (state.myStrat?.[mk]?.texto || "").trim(); return t ? `- ${MK_LBL[mk]}: «${t.slice(0, 3000)}»` : ""; }).filter(Boolean);
+  return parts.length ? `\nESTRATEGIA EXPLICADA POR EL PROPIO TRADER, con sus palabras (es su referencia: úsala para valorar sus operaciones y contestarle; si sus operaciones o sus explicaciones la contradicen, díselo con datos):\n${parts.join("\n")}\n` : "";
+}
+const meMk = () => state.meMk || (state.mercado === "fut" ? "fut" : "fx");
+function renderMyStrat() {
+  const box = $("#me-panel"); if (!box) return;
+  const mk = meMk(), D = state.myStrat[mk];
+  $("#me-mk").innerHTML = ["fx", "fut"].map(k => `<button type="button" data-me-mk="${k}" aria-pressed="${k === mk}">${MK_LBL[k]}</button>`).join("");
+  const ta = $("#me-txt");
+  if (ta.dataset.mk !== mk || (!ta.dataset.dirty && document.activeElement !== ta)) { ta.value = D?.texto || ""; ta.dataset.mk = mk; ta.dataset.dirty = ""; }
+  const n = mkTrades(mk, true).filter(t => t.cuenta === "Real").length;
+  if (!$("#me-st").dataset.busy) $("#me-st").textContent = D?.updated ? `Guardada el ${new Date(D.updated).toLocaleDateString("es-ES")}${D.revision ? ` · contrastada el ${new Date(D.revision.at).toLocaleDateString("es-ES")}${n - (D.revision.n || 0) > 0 ? ` (desde entonces, ${n - D.revision.n} operaciones reales nuevas)` : ""}` : ""}` : "";
+  const R = D?.revision;
+  const ver = {si: ["Se cumple", "up"], parcial: ["A medias", "warn"], no: ["No se cumple", "down"], sin_datos: ["Sin datos", ""]};
+  $("#me-out").innerHTML = R ? `
+    ${R.resumen ? `<div class="banner info">${esc(R.resumen)}</div>` : ""}
+    ${R.reglas?.length ? `<div class="tablebox"><table><thead><tr><th>Tu regla</th><th>¿Se cumple?</th><th class="n">Ops</th><th class="n">WR</th><th>Lo que se ve</th></tr></thead><tbody>${R.reglas.map(x => { const v = ver[x.se_cumple] || [x.se_cumple || "—", ""]; return `<tr><td><b>${esc(x.regla)}</b></td><td><span class="pill ${v[1]}">${esc(v[0])}</span></td><td class="n">${esc(x.operaciones ?? "—")}</td><td class="n">${x.wr == null ? "—" : esc(x.wr) + "%"}</td><td class="small">${esc(x.evidencia || "")}</td></tr>`; }).join("")}</tbody></table></div>` : ""}
+    ${R.aprendido?.length ? `<div><h3 style="margin:0 0 6px">Lo que repites en tus explicaciones y aún no está escrito</h3><ul class="clean">${R.aprendido.map((x, i) => `<li><b>${esc(x.punto)}</b>${x.evidencia ? ` <span class="small muted">— ${esc(x.evidencia)}</span>` : ""} ${(D.texto || "").includes(x.texto_para_anadir || x.punto) ? `<span class="pill up">Añadido</span>` : `<button type="button" class="btn small" data-me-add="${i}">Añadir a mi explicación</button>`}</li>`).join("")}</ul></div>` : ""}
+    ${R.contradicciones?.length ? `<div><h3 style="margin:0 0 6px">Donde lo que haces no cuadra con lo que escribes</h3><ul class="clean">${R.contradicciones.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}` : "";
+}
+async function saveMyStrat(mk, patch) {
+  const D = {kind: "my_strategy", mercado: mk, ...(state.myStrat[mk] || {}), ...patch};
+  state.myStrat[mk] = D; renderMyStrat();
+  if (col) { try { await col.doc(MY_DOC(mk)).set(D); } catch (e) { $("#me-st").textContent = "No se pudo guardar: " + (e.message || e.code); } }
+}
+$("#me-txt").addEventListener("input", e => { e.target.dataset.dirty = "1"; });
+$("#me-save").addEventListener("click", async () => { const mk = meMk(); await saveMyStrat(mk, {texto: $("#me-txt").value.trim(), updated: new Date().toISOString()}); $("#me-txt").dataset.dirty = ""; renderMyStrat(); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-me-mk]"); if (b) { if ($("#me-txt").dataset.dirty && !confirm("Tienes cambios sin guardar en tu explicación. ¿Cambiar de mercado igualmente?")) return; $("#me-txt").dataset.dirty = ""; state.meMk = b.dataset.meMk; renderMyStrat(); return; }
+  const a = e.target.closest("[data-me-add]"); if (a) {
+    const mk = meMk(), D = state.myStrat[mk], x = D?.revision?.aprendido?.[+a.dataset.meAdd]; if (!x) return;
+    const add = x.texto_para_anadir || x.punto, base = ($("#me-txt").dataset.dirty ? $("#me-txt").value : D.texto || "").trim();
+    $("#me-txt").dataset.dirty = ""; saveMyStrat(mk, {texto: (base ? base + "\n" : "") + "- " + add, updated: new Date().toISOString()});
+  }
+});
+$("#me-review").addEventListener("click", async () => {
+  const mk = meMk(), st = $("#me-st"), btn = $("#me-review");
+  const texto = ($("#me-txt").value || "").trim();
+  const ts = mkTrades(mk, true).filter(t => t.cuenta === "Real" || t.notes || t.revisiones?.length);
+  const explained = ts.filter(t => (t.notes && !/^Creada automáticamente|^Importada de/.test(t.notes)) || traderComments(t));
+  if (!texto) { st.textContent = "Escribe y guarda primero tu explicación."; $("#me-txt").focus(); return; }
+  if (!state.sample) { st.textContent = "La IA no está disponible en esta vista: abre la página en claude.ai con tu cuenta."; return; }
+  btn.disabled = true; st.dataset.busy = "1"; st.textContent = `La IA está contrastando tu explicación con ${ts.length} operaciones (${explained.length} con explicaciones tuyas)…`;
+  const prompt = `${COACH}
+El trader ha escrito con sus palabras su estrategia de ${MK_LBL[mk]}. Contrástala con sus operaciones REALES (y con las de backtesting solo para validar el modelo de entrada) y, sobre todo, con lo que él mismo explica en cada operación (columnas «notes» y «comentarios_trader»). Tiene TDAH: frases cortas y concretas.
+1) Divide su explicación en reglas concretas y, para cada una, di si se está cumpliendo en sus operaciones: "si", "parcial", "no" o "sin_datos", con cuántas operaciones lo comprueban, el win rate de esas operaciones si se puede calcular, y la evidencia (fechas y lo que él escribió).
+2) Busca cosas que REPITE en sus explicaciones o que se ven una y otra vez en sus operaciones ganadoras y que NO están en su texto (p. ej. siempre espera el cierre de la vela, siempre opera tras barrer Asia, mueve el stop a BE en 1R). Solo lo que aparezca en 3 o más operaciones; cita las fechas. Para cada una, escribe una frase lista para añadir a su explicación, con su estilo.
+3) Señala dónde lo que hace contradice lo que escribe (con fechas y R).
+No inventes nada que no esté en los datos.
+SU EXPLICACIÓN: «${texto.slice(0, 4000)}»
+OPERACIONES DE ${MK_LBL[mk].toUpperCase()} (CSV):
+${compactCSV([...ts].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), 200)}
+Responde SOLO con un objeto JSON: {"resumen":"2-3 frases","reglas":[{"regla":"...","se_cumple":"si|parcial|no|sin_datos","operaciones":número,"wr":número o null,"evidencia":"..."}],"aprendido":[{"punto":"lo que repite","evidencia":"fechas / citas","texto_para_anadir":"frase para su explicación"}],"contradicciones":["..."]}`;
+  try {
+    const R = await state.sample.json(prompt, {modelTier: "complex"});
+    if (!R || !Array.isArray(R.reglas)) throw {code: "invalid_json"};
+    await saveMyStrat(mk, {texto, revision: {...R, at: new Date().toISOString(), n: mkTrades(mk, true).filter(t => t.cuenta === "Real").length}});
+    st.dataset.busy = ""; renderMyStrat();
+  } catch (e) {
+    st.dataset.busy = ""; st.textContent = e.code === "invalid_json" ? "No pude generar el contraste; prueba otra vez." : AI_ERR[e.code] || "No se pudo: " + (e.message || e.code);
+  } finally { btn.disabled = false; }
+});
 const COACH = `Eres un coach de trading profesional especializado en EURUSD, GBPUSD, DXY, Nasdaq 100 y S&P 500. Hablas en español, directo y honesto. Ayudas a mejorar el PROCESO, no a validar resultados: una ganadora mal ejecutada es un mal trade y una perdedora bien ejecutada es un buen trade. Cita números concretos de los datos y avisa cuando la muestra sea pequeña. Nunca prometas resultados. Cada operación tiene una columna «cuenta»: Real (trading real) o Backtest (backtesting en modo Reproducción). El backtesting sirve para validar el modelo de entrada, pero NO para hablar de frecuencia diaria, horarios reales, rachas, emociones ni sobreoperar; distingue siempre los resultados reales de los de backtesting.
 ${NOTES_RULE}
 ${DRAW_RULE}`;
@@ -3688,7 +3765,7 @@ $("#c-go").addEventListener("click", async () => {
   const D = diagnose(state.trades), s = summary(state.trades), lift = confluenceLift(state.trades);
   const bd = k => breakdown(state.trades, k).map(r => `${r.key}: ${r.n} ops, WR ${fmtP(r.wr)}, exp ${fmtR(r.exp)}`).join("; ");
   const ex = state.trades.some(t => t.ejemplo) ? "\nAVISO: parte de estas operaciones son de ejemplo (inventadas); menciónalo." : "";
-  const prompt = `${COACH}
+  const prompt = `${COACH}${myStratTxt()}
 ${stratTxt()}
 Analiza mi journal completo.${ex}
 ESTADÍSTICAS: ${JSON.stringify({ops: s.trades, wr: s.wr?.toFixed(1), rTotal: s.totalR.toFixed(2), expectativa: s.exp?.toFixed(3), pf: s.pf?.toFixed(2), drawdown: s.dd.toFixed(2), planCumplido: s.plan?.toFixed(1)})}
@@ -3720,7 +3797,7 @@ $("#c-stop").addEventListener("click", () => coachCtl?.abort());
 $("#c-review").addEventListener("click", () => {
   const t = state.trades.find(x => x.id === $("#c-trade").value); if (!t) return;
   const D = diagnose(state.trades), i = D.sorted.findIndex(x => x.id === t.id), x = D.explain(i), s = summary(state.trades);
-  askAI($("#c-review-out"), `${COACH}
+  askAI($("#c-review-out"), `${COACH}${myStratTxt()}
 ${stratTxt()}Valora también cuánto encaja esta operación con su estrategia.
 
 Revisa esta operación: ${JSON.stringify({fecha: t.date, hora: t.time, par: t.pair, dir: t.direction, sesion: t.session, setup: t.setup, r: t.r, resultado: t.result, sesgo: t.daily_bias, confluencias: t.confluences, emocion: t.emotion, plan: t.followed_plan, noticia: t.news_nearby, errores: t.mistakes, notas: t.notes, comentarios_trader: traderComments(t), rrPlaneado: t.rr?.toFixed(2)})}
@@ -3737,7 +3814,7 @@ $("#chat-form").addEventListener("submit", async e => {
   const out = document.createElement("div"); out.className = "msg ai"; box.append(out);
   if (!chatTurns.length) {
     const s = summary(state.trades);
-    chatTurns.push({role: "user", content: `${COACH}${stratTxt()}\nResponde a mis preguntas sobre mis operaciones usando estos datos. Calcula con cuidado cuando te pregunte por WR o R de un subconjunto.\nResumen: ${state.trades.length} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}.\nOPERACIONES (CSV):\n${compactCSV(state.trades, 300)}`});
+    chatTurns.push({role: "user", content: `${COACH}${myStratTxt()}${stratTxt()}\nResponde a mis preguntas sobre mis operaciones usando estos datos. Calcula con cuidado cuando te pregunte por WR o R de un subconjunto.\nResumen: ${state.trades.length} ops, WR ${fmtP(s.wr)}, R total ${fmtR(s.totalR)}.\nOPERACIONES (CSV):\n${compactCSV(state.trades, 300)}`});
   }
   chatTurns.push({role: "user", content: q});
   out.innerHTML = `<span class="muted">Pensando…</span>`;
