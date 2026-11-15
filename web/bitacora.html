@@ -253,7 +253,7 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div class="panel" id="mtf-panel">
       <div class="panel-head">
-        <div><h3>Estructura multitemporal y rangos</h3><div class="small muted">Velas de 4H a 3 meses, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
+        <div><h3>Estructura multitemporal y rangos</h3><div class="small muted">Velas de 1H a 1 año, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
         <select id="mtf-pair" style="width:auto" aria-label="Par"></select>
       </div>
       <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
@@ -2323,8 +2323,11 @@ $("#brief-picker").addEventListener("change", renderBriefing);
 // Estructura multitemporal y rangos por temporalidad
 // Velas ancladas al inicio del día forex (17:00 de Nueva York).
 // =====================================================================
-const MTF = [["4H", 4], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
-  ["2D", "D2"], ["3D", "D3"], ["4D", "D4"], ["5D", "D5"], ["6D", "D6"], ["7D", "D7"], ["1 semana", "W"], ["1 mes", "M"], ["3 meses", "Q"]];
+const MTF = [["1H", 1], ["2H", 2], ["3H", 3], ["4H", 4], ["5H", 5], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
+  ["2D", "D2"], ["3D", "D3"], ["4D", "D4"], ["5D", "D5"], ["6D", "D6"], ["7D", "D7"], ["1 semana", "W"], ["2 semanas", "W2"], ["1 mes", "M"], ["2 meses", "M2"], ["3 meses", "Q"], ["6 meses", "M6"], ["1 año", "Y"]];
+// Velas de varios meses: índice del grupo (meses desde enero del año 0) y cuándo cierra
+const monthGroup = (day, n) => Math.floor((+day.slice(0, 4) * 12 + +day.slice(5, 7) - 1) / n);
+const week2Key = day => Math.floor(Math.round((Date.parse(weekKey(day) + "T00:00:00Z") - Date.parse("2000-01-03T00:00:00Z")) / 864e5 / 7) / 2);
 const _nyFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23"});
 const _offCache = new Map();
 function nyOffsetMin(ms) {
@@ -2364,7 +2367,10 @@ function seriesFor(tf, h1, d1, anchor = 420) {
   if (!d1.length) return [];
   if (tf[0] === "D") { const n = +tf.slice(1); return aggregate(d1, b => Math.floor(bizIndex(b.day) / n)); }
   if (tf === "W") return aggregate(d1, b => weekKey(b.day));
+  if (tf === "W2") return aggregate(d1, b => week2Key(b.day));
   if (tf === "M") return aggregate(d1, b => b.day.slice(0, 7));
+  if (tf === "M2" || tf === "M6") { const n = +tf.slice(1); return aggregate(d1, b => monthGroup(b.day, n)); }
+  if (tf === "Y") return aggregate(d1, b => b.day.slice(0, 4));
   return aggregate(d1, b => b.day.slice(0, 4) + "Q" + Math.floor((+b.day.slice(5, 7) - 1) / 3));
 }
 // Serie diaria: la del diario guardado para el pasado y la construida desde 1H donde la haya
@@ -2432,6 +2438,9 @@ function candleEnd(tf, c, anchor) {
   if (typeof tf === "number") { const [day, b] = String(c.k).split("|"); const endH = tf >= 24 ? 24 : Math.min(24, (+b + 1) * tf); return clockToUtc(day, endH, anchor); }
   if (tf[0] === "D") { const n = +tf.slice(1), idx = (+c.k + 1) * n - 1, day = addDaysISO("2000-01-03", Math.floor(idx / 5) * 7 + idx % 5); return clockToUtc(day, 24, anchor); }
   if (tf === "W") return clockToUtc(addDaysISO(c.k, 4), 24, anchor);
+  if (tf === "W2") return clockToUtc(addDaysISO("2000-01-03", (+c.k * 2 + 1) * 7 + 4), 24, anchor);
+  if (tf === "M2" || tf === "M6") { const n = +tf.slice(1), last = (+c.k + 1) * n - 1; return clockToUtc(lastBizDay(Math.floor(last / 12), last % 12), 24, anchor); }
+  if (tf === "Y") return clockToUtc(lastBizDay(+c.k, 11), 24, anchor);
   if (tf === "M") { const [y, m] = c.k.split("-").map(Number); return clockToUtc(lastBizDay(y, m - 1), 24, anchor); }
   const [y, q] = c.k.split("Q").map(Number); return clockToUtc(lastBizDay(y, q * 3 + 2), 24, anchor);
 }
