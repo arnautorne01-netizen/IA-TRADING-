@@ -253,7 +253,7 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div class="panel" id="mtf-panel">
       <div class="panel-head">
-        <div><h3>Estructura multitemporal y CRT pendientes</h3><div class="small muted">Velas de 4H a 3 meses, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
+        <div><h3>Estructura multitemporal y rangos</h3><div class="small muted">Velas de 4H a 3 meses, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
         <select id="mtf-pair" style="width:auto" aria-label="Par"></select>
       </div>
       <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
@@ -262,7 +262,7 @@ details summary{cursor:pointer;font-weight:600}
         <div class="chips" id="mtf-strip"></div>
         <div class="small" id="mtf-sum"></div>
         <div class="tablebox"><table id="mtf-table"></table></div>
-        <p class="small muted" style="margin:0">CRT: la vela 2 barre el máximo o el mínimo de la vela 1 (solo uno de los dos) y cierra dentro de su rango; el objetivo es el extremo opuesto de la vela 1 y se invalida si el precio supera el extremo del barrido. Solo se muestran los CRT cuya vela 2 es una de las 3 últimas velas cerradas y que siguen pendientes: el precio no ha llegado al objetivo ni se ha invalidado. «En formación» = la vela actual está barriendo, pero aún no ha cerrado.</p>
+        <p class="small muted" style="margin:0"><b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rango pendiente</b> = una vela ya cerrada barrió un lado del rango anterior y cerró dentro, y el precio todavía no ha llegado al lado opuesto ni ha superado el extremo del barrido (se buscan hasta 40 velas atrás).</p>
       </div>
       <details><summary class="small">Subir velas desde TradingView</summary>
         <p class="small" style="margin:6px 0">En TradingView abre el gráfico del par en <b>1 hora</b>, carga todo el historial que puedas (cuanto más, mejor: un año da para 1 mes y 3 meses) y usa «Exportar datos del gráfico». Sube aquí el archivo con el par correcto elegido arriba. Opcional: sube también el gráfico <b>diario</b> para tener más historia en 1 mes y 3 meses.</p>
@@ -2320,7 +2320,7 @@ $("#acc-csv").addEventListener("click", async () => {
 $("#brief-picker").addEventListener("change", renderBriefing);
 
 // =====================================================================
-// Estructura multitemporal y rangos CRT pendientes
+// Estructura multitemporal y rangos por temporalidad
 // Velas ancladas al inicio del día forex (17:00 de Nueva York).
 // =====================================================================
 const MTF = [["4H", 4], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
@@ -2417,27 +2417,49 @@ function structureOf(bars, dec) {
   if (!hh && !hl) return {label: "Bajista", cls: "down", detail: `Máximos y mínimos decrecientes. Máximo a defender: ${f(h2)}`, ...lv};
   return {label: "Rango", cls: "warn", detail: `${hh ? "Expansión: máximo más alto y mínimo más bajo" : "Compresión: máximo más bajo y mínimo más alto"} (${f(l2)} – ${f(h2)})`, ...lv};
 }
-// CRT: vela 1 = rango; la vela 2 barre UN extremo de la vela 1 (sin tocar el otro) y CIERRA dentro de su rango;
-// objetivo = el extremo opuesto de la vela 1; se invalida si el precio supera el extremo de la vela 2.
-// Solo cuenta si la vela 2 es una de las 3 últimas velas cerradas y, desde entonces, ni ha llegado al objetivo ni se ha invalidado.
-function crtOf(bars, dec, pip, closed = false) {
-  const n = bars.length, px = bars[n - 1]?.c, f = v => v.toFixed(dec), dist = t => Math.round(Math.abs(t - px) / pip);
-  if (n < 3) return null;
-  const lastIdx = closed ? n - 1 : n - 2;
-  for (let i = lastIdx; i >= Math.max(1, lastIdx - 2); i--) {
-    const c1 = bars[i - 1], c2 = bars[i], after = bars.slice(i + 1);
-    const hiAfter = Math.max(...after.map(b => b.h)), loAfter = Math.min(...after.map(b => b.l));
-    const inside = c2.c < c1.h && c2.c > c1.l, ago = lastIdx - i;
-    if (c2.h > c1.h && c2.l > c1.l && inside && loAfter > c1.l && hiAfter <= c2.h)
-      return {dir: "Bajista", cls: "down", text: `Barrió el máximo ${f(c1.h)} y cerró dentro (${f(c2.c)})`, target: f(c1.l), dist: dist(c1.l), inval: f(c2.h), age: ago};
-    if (c2.l < c1.l && c2.h < c1.h && inside && hiAfter < c1.h && loAfter >= c2.l)
-      return {dir: "Alcista", cls: "up", text: `Barrió el mínimo ${f(c1.l)} y cerró dentro (${f(c2.c)})`, target: f(c1.h), dist: dist(c1.h), inval: f(c2.l), age: ago};
+// ---- Rangos por temporalidad ----
+// Rango de una vela = su máximo y su mínimo. Se mira cómo se comporta la vela actual frente al rango de la vela anterior
+// y qué rangos anteriores siguen pendientes: una vela barrió un lado del rango anterior, cerró dentro y el lado opuesto aún no se ha alcanzado.
+function clockToUtc(day, hours, anchor) {
+  const msClock = Date.parse(day + "T00:00:00Z") + hours * 3600e3;
+  let real = msClock - (nyOffsetMin(msClock) + anchor) * 6e4; real = msClock - (nyOffsetMin(real) + anchor) * 6e4;
+  return real;
+}
+const addDaysISO = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+function lastBizDay(y, m) { let d = new Date(Date.UTC(y, m + 1, 0)); while (d.getUTCDay() % 6 === 0) d = new Date(d - 864e5); return d.toISOString().slice(0, 10); }
+// Cuándo cierra una vela (ms UTC)
+function candleEnd(tf, c, anchor) {
+  if (typeof tf === "number") { const [day, b] = String(c.k).split("|"); const endH = tf >= 24 ? 24 : Math.min(24, (+b + 1) * tf); return clockToUtc(day, endH, anchor); }
+  if (tf[0] === "D") { const n = +tf.slice(1), idx = (+c.k + 1) * n - 1, day = addDaysISO("2000-01-03", Math.floor(idx / 5) * 7 + idx % 5); return clockToUtc(day, 24, anchor); }
+  if (tf === "W") return clockToUtc(addDaysISO(c.k, 4), 24, anchor);
+  if (tf === "M") { const [y, m] = c.k.split("-").map(Number); return clockToUtc(lastBizDay(y, m - 1), 24, anchor); }
+  const [y, q] = c.k.split("Q").map(Number); return clockToUtc(lastBizDay(y, q * 3 + 2), 24, anchor);
+}
+function rangeOf(s, closed, tf, dec, pip, anchor) {
+  const n = s.length, f = v => v.toFixed(dec); if (n < 2) return null;
+  const px = s[n - 1].c, dist = v => Math.round(Math.abs(v - px) / pip);
+  const ref = closed ? s[n - 1] : s[n - 2], cur = closed ? null : s[n - 1];
+  let now = null;
+  if (cur) {
+    const hi = cur.h > ref.h, lo = cur.l < ref.l, inside = cur.c <= ref.h && cur.c >= ref.l;
+    now = !hi && !lo ? {k: "dentro", cls: "", text: "Dentro del rango: aún no ha barrido ningún lado"}
+      : hi && lo ? {k: "ambos", cls: "warn", text: `Ha barrido los dos lados (${f(cur.h)} y ${f(cur.l)})`}
+      : hi && inside ? {k: "formacion", dir: "Bajista", cls: "down", text: `Barrió el máximo (hasta ${f(cur.h)}) y está de vuelta dentro`, target: f(ref.l), tdist: dist(ref.l), inval: f(cur.h)}
+      : lo && inside ? {k: "formacion", dir: "Alcista", cls: "up", text: `Barrió el mínimo (hasta ${f(cur.l)}) y está de vuelta dentro`, target: f(ref.h), tdist: dist(ref.h), inval: f(cur.l)}
+      : hi ? {k: "fuera", cls: "up", text: `Por encima del rango (${f(cur.c)}): si cierra fuera, es ruptura`}
+      : {k: "fuera", cls: "down", text: `Por debajo del rango (${f(cur.c)}): si cierra fuera, es ruptura`};
+    now.closeAt = candleEnd(tf, cur, anchor);
   }
-  if (closed) return null;
-  const p = bars[n - 2], c = bars[n - 1];
-  if (c.h > p.h && c.l > p.l && c.c < p.h && c.c > p.l) return {dir: "Bajista", cls: "warn", forming: true, text: `La vela actual barre el máximo ${f(p.h)} y de momento está dentro del rango (falta que cierre)`, target: f(p.l), dist: dist(p.l), inval: f(c.h), age: 0};
-  if (c.l < p.l && c.h < p.h && c.c > p.l && c.c < p.h) return {dir: "Alcista", cls: "warn", forming: true, text: `La vela actual barre el mínimo ${f(p.l)} y de momento está dentro del rango (falta que cierre)`, target: f(p.h), dist: dist(p.h), inval: f(c.l), age: 0};
-  return null;
+  // rangos pendientes (sin límite de velas hacia atrás, hasta 40)
+  const pend = [], lastC = closed ? n - 1 : n - 2;
+  for (let i = lastC; i >= Math.max(1, lastC - 40) && pend.length < 3; i--) {
+    const c1 = s[i - 1], c2 = s[i], after = s.slice(i + 1);
+    const hiA = Math.max(-Infinity, ...after.map(b => b.h)), loA = Math.min(Infinity, ...after.map(b => b.l)), inside = c2.c < c1.h && c2.c > c1.l;
+    if (!inside) continue;
+    if (c2.h > c1.h && c2.l > c1.l && loA > c1.l && hiA <= c2.h) pend.push({dir: "Bajista", cls: "down", rango: `${f(c1.h)} – ${f(c1.l)}`, target: f(c1.l), tdist: dist(c1.l), inval: f(c2.h), t: c2.t, ago: lastC - i});
+    else if (c2.l < c1.l && c2.h < c1.h && hiA < c1.h && loA >= c2.l) pend.push({dir: "Alcista", cls: "up", rango: `${f(c1.h)} – ${f(c1.l)}`, target: f(c1.h), tdist: dist(c1.h), inval: f(c2.l), t: c2.t, ago: lastC - i});
+  }
+  return {ref: {h: f(ref.h), l: f(ref.l), t: ref.t, size: Math.round((ref.h - ref.l) / pip)}, now, pend, nextOpen: closed};
 }
 function mtfAnalysis(pair) {
   const m = state.market[pair]; if (!m?.h1?.length && !m?.d1?.length) return null;
@@ -2445,14 +2467,17 @@ function mtfAnalysis(pair) {
   const h1 = cleanH1(m.h1 || [], anchor), d1 = dailySeries(h1, m.d1 || [], anchor, INS(pair).grupo === "fx" && /yahoo/i.test(m.source || ""));
   const ms = marketState(h1, anchor);
   const out = MTF.map(([name, tf]) => {
-    const s = seriesFor(tf, h1, d1, anchor), closed = lastClosed(tf, s, ms);
-    return {name, n: s.length, closed, st: structureOf(s, dec), crt: crtOf(s, dec, pip, closed)};
+    const s = seriesFor(tf, h1, d1, anchor), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
+    return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor)};
   });
   out.market = ms; return out;
 }
 function mtfText(pair) {
   const a = mtfAnalysis(pair); if (!a) return "";
-  return `${pair}: ` + a.map(r => `${r.name} ${r.st.label.toLowerCase()}${r.crt ? ` (CRT ${r.crt.dir.toLowerCase()}${r.crt.forming ? " en formación" : ""} pendiente, objetivo ${r.crt.target})` : ""}`).join(", ");
+  return `${pair}: ` + a.map(r => { const g = r.rg; if (!g) return `${r.name} ${r.st.label.toLowerCase()}`;
+    const now = g.now ? (g.now.k === "formacion" ? `vela actual en formación: ${g.now.text.toLowerCase()} (si cierra dentro, objetivo ${g.now.target}, invalida ${g.now.inval})` : `vela actual: ${g.now.text.toLowerCase()}`) : "vela cerrada";
+    const pe = g.pend.map(x => `pendiente ${x.dir.toLowerCase()} objetivo ${x.target} invalida ${x.inval}`).join("; ");
+    return `${r.name} ${r.st.label.toLowerCase()} [rango ${g.ref.h}-${g.ref.l}; ${now}${pe ? "; " + pe : ""}]`; }).join(", ");
 }
 function renderMTF() {
   const pair = $("#mtf-pair").value, m = state.market[pair];
@@ -2463,20 +2488,25 @@ function renderMTF() {
   const last = m.h1?.length ? m.h1[m.h1.length - 1] : m.d1?.[m.d1.length - 1];
   const MS = a.market || {}, endTxt = MS.end ? new Date(MS.end).toLocaleString("es-ES", {timeZone: "Europe/Madrid", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}) : "—";
   $("#mtf-meta").innerHTML = `Velas hasta: <b>${esc(endTxt)}</b> (Madrid) · precio ${last.c.toFixed(INS(pair).dec)} · fuente: ${esc(m.source || "—")} · velas ancladas a las ${INS(pair).grupo === "fut" ? "18:00 de Nueva York (sesión CME)" : "17:00 de Nueva York (día forex)"}`
-    + (MS.weekend ? `<div class="small">Mercado cerrado: las velas de hasta 1 semana ya están cerradas; el CRT se lee con el cierre del viernes.</div>` : "")
-    + (MS.stale || MS.weekendNoClose ? `<div class="banner" style="margin-top:6px">Faltan velas: los datos no llegan hasta ahora${MS.weekendNoClose ? " (ni hasta el cierre del viernes)" : ""}, así que los CRT de las temporalidades bajas pueden estar mal. Se actualizan con la tarea diaria; también puedes subir tu CSV de TradingView abajo.</div>` : "");
+    + (MS.weekend ? `<div class="small">Mercado cerrado: las velas de hasta 1 semana ya están cerradas; los rangos se miden con el cierre del viernes.</div>` : "")
+    + (MS.stale || MS.weekendNoClose ? `<div class="banner" style="margin-top:6px">Faltan velas: los datos no llegan hasta ahora${MS.weekendNoClose ? " (ni hasta el cierre del viernes)" : ""}, así que los rangos de las temporalidades bajas pueden estar mal. Se actualizan con la tarea diaria; también puedes subir tu CSV de TradingView abajo.</div>` : "");
   const bull = a.filter(r => r.st.label === "Alcista").length, bear = a.filter(r => r.st.label === "Bajista").length;
   $("#mtf-strip").innerHTML = a.map(r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.name)} ${r.st.label === "Alcista" ? "↑" : r.st.label === "Bajista" ? "↓" : "↔"}</span>`).join(" ");
+  const form = a.filter(r => r.rg?.now?.k === "formacion"), npend = a.reduce((x, r) => x + (r.rg?.pend.length || 0), 0);
   $("#mtf-sum").innerHTML = `<b>${bear}</b> temporalidades bajistas, <b>${bull}</b> alcistas y <b>${a.length - bull - bear}</b> en rango o sin datos. ` +
-    (bear > bull * 2 ? "Dominio bajista claro: prioriza ventas." : bull > bear * 2 ? "Dominio alcista claro: prioriza compras." : "Estructura mixta: opera a favor de la temporalidad mayor y reduce tamaño.");
+    (bear > bull * 2 ? "Dominio bajista claro: prioriza ventas." : bull > bear * 2 ? "Dominio alcista claro: prioriza compras." : "Estructura mixta: opera a favor de la temporalidad mayor y reduce tamaño.")
+    + `<div style="margin-top:6px">${form.length ? `<b>Rangos en formación ahora:</b> ${form.map(r => `<span class="pill ${r.rg.now.cls}">${esc(r.name)} ${r.rg.now.dir === "Alcista" ? "↑" : "↓"} obj. ${esc(r.rg.now.target)}</span>`).join(" ")} <span class="muted">(la vela actual barrió un lado y está dentro; falta que cierre)</span>` : `<span class="muted">Ninguna vela abierta está barriendo un lado del rango anterior ahora mismo.</span>`} · <b>${npend}</b> rangos pendientes de alcanzar el lado opuesto.</div>`;
+  const dt = (ms, long) => new Date(ms).toLocaleString("es-ES", {timeZone: "Europe/Madrid", weekday: "short", day: "numeric", month: long ? "short" : undefined, hour: "2-digit", minute: "2-digit"});
+  const left = ms => { const d = ms - Date.now(); if (d <= 0) return "cerrando"; const h = Math.floor(d / 3600e3), m = Math.floor(d % 3600e3 / 6e4), D = Math.floor(h / 24); return D >= 2 ? `en ${D} días` : h ? `en ${h} h ${String(m).padStart(2, "0")} min` : `en ${m} min`; };
+  const u = INS(pair).unit;
   table($("#mtf-table"), [
     {h: "Temporalidad", f: r => r.name},
-    {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}">${esc(r.st.label)}</span>`},
-    {h: "Lectura", f: r => r.st.detail},
-    {h: "CRT pendiente", html: 1, f: r => r.crt ? `<span class="pill ${r.crt.cls}">${esc(r.crt.dir)}${r.crt.forming ? " · en formación" : ""}</span> <span class="small">${esc(r.crt.text)}${r.crt.forming ? "" : r.crt.age === 0 ? " · última vela cerrada" : ` · la vela 2 cerró hace ${r.crt.age + 1} velas`}</span>` : `<span class="muted small">Ninguno</span>`},
-    {h: "Objetivo", n: 1, f: r => r.crt ? r.crt.target : "—"},
-    {h: `Distancia (${INS(pair).unit})`, n: 1, f: r => r.crt ? r.crt.dist : "—"},
-    {h: "Se invalida en", n: 1, f: r => r.crt ? r.crt.inval : "—"},
+    {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.st.label)}</span>`},
+    {h: "Rango (última vela cerrada)", html: 1, f: r => r.rg ? `<span class="num">${esc(r.rg.ref.h)}</span><br><span class="num">${esc(r.rg.ref.l)}</span><div class="small muted">${esc(r.rg.ref.size ?? "")} ${u}</div>` : "—"},
+    {h: "Vela actual", html: 1, f: r => { const g = r.rg; if (!g) return "—"; if (!g.now) return `<span class="small muted">Cerrada. La siguiente vela se medirá contra este rango.</span>`;
+      const w = g.now; return `${w.k === "formacion" ? `<span class="pill ${w.cls}">Rango en formación ${w.dir === "Alcista" ? "↑" : "↓"}</span> ` : w.k === "fuera" ? `<span class="pill warn">Fuera</span> ` : ""}<span class="small">${esc(w.text)}</span>${w.k === "formacion" ? `<div class="small">Si cierra dentro → objetivo <b class="num">${esc(w.target)}</b> (${w.tdist} ${u}) · invalida <span class="num">${esc(w.inval)}</span></div>` : ""}`; }},
+    {h: "Cierra", html: 1, f: r => r.rg?.now ? `<span class="small">${esc(left(r.rg.now.closeAt))}</span><div class="small muted">${esc(dt(r.rg.now.closeAt, true))}</div>` : `<span class="small muted">—</span>`},
+    {h: "Rangos pendientes", html: 1, f: r => r.rg?.pend.length ? r.rg.pend.map(x => `<div class="small"><span class="pill ${x.cls}">${x.dir === "Alcista" ? "↑" : "↓"}</span> objetivo <b class="num">${esc(x.target)}</b> (${x.tdist} ${u}) · invalida <span class="num">${esc(x.inval)}</span> <span class="muted">· barrido en la vela de ${esc(dt(x.t * 1000, true))}</span></div>`).join("") : `<span class="muted small">Ninguno</span>`},
   ], a);
 }
 // --- datos de velas: CSV de TradingView o los que guarda la tarea diaria
