@@ -262,7 +262,7 @@ details summary{cursor:pointer;font-weight:600}
         <div class="chips" id="mtf-strip"></div>
         <div class="small" id="mtf-sum"></div>
         <div class="tablebox"><table id="mtf-table"></table></div>
-        <p class="small muted" style="margin:0"><b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rango pendiente</b> = una vela ya cerrada barrió un lado del rango anterior y cerró dentro, y el precio todavía no ha llegado al lado opuesto ni ha superado el extremo del barrido (se buscan hasta 40 velas atrás).</p>
+        <p class="small muted" style="margin:0"><b>Tu regla:</b> la vela 2 toma el máximo o el mínimo de la vela 1 y cierra dentro de su rango. <b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rango pendiente</b> = una vela ya cerrada barrió un lado del rango anterior y cerró dentro, y el precio todavía no ha llegado al lado opuesto ni ha superado el extremo del barrido (se buscan hasta 40 velas atrás).</p>
       </div>
       <details><summary class="small">Subir velas desde TradingView</summary>
         <p class="small" style="margin:6px 0">En TradingView abre el gráfico del par en <b>1 hora</b>, carga todo el historial que puedas (cuanto más, mejor: un año da para 1 mes y 3 meses) y usa «Exportar datos del gráfico». Sube aquí el archivo con el par correcto elegido arriba. Opcional: sube también el gráfico <b>diario</b> para tener más historia en 1 mes y 3 meses.</p>
@@ -2463,7 +2463,7 @@ function rangeOf(s, closed, tf, dec, pip, anchor) {
   const pend = [], lastC = closed ? n - 1 : n - 2;
   for (let i = lastC; i >= Math.max(1, lastC - 40) && pend.length < 3; i--) {
     const c1 = s[i - 1], c2 = s[i], after = s.slice(i + 1);
-    const hiA = Math.max(-Infinity, ...after.map(b => b.h)), loA = Math.min(Infinity, ...after.map(b => b.l)), inside = c2.c < c1.h && c2.c > c1.l;
+    const hiA = Math.max(-Infinity, ...after.map(b => b.h)), loA = Math.min(Infinity, ...after.map(b => b.l)), inside = c2.c <= c1.h && c2.c >= c1.l; // regla del trader: la vela 2 toma el máximo o el mínimo de la vela 1 y cierra dentro (cerrar justo en el extremo cuenta como dentro)
     if (!inside) continue;
     if (c2.h > c1.h && c2.l > c1.l && loA > c1.l && hiA <= c2.h) pend.push({dir: "Bajista", cls: "down", rango: `${f(c1.h)} – ${f(c1.l)}`, target: f(c1.l), tdist: dist(c1.l), inval: f(c2.h), t: c2.t, ago: lastC - i});
     else if (c2.l < c1.l && c2.h < c1.h && hiA < c1.h && loA >= c2.l) pend.push({dir: "Alcista", cls: "up", rango: `${f(c1.h)} – ${f(c1.l)}`, target: f(c1.h), tdist: dist(c1.h), inval: f(c2.l), t: c2.t, ago: lastC - i});
