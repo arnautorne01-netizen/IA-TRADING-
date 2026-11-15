@@ -609,6 +609,12 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div id="s-few" class="banner" hidden></div>
     <div id="s-status" class="small muted"></div>
+    <div class="panel" id="ex-panel">
+      <div class="panel-head"><h3>✍️ Mi estrategia según mis explicaciones</h3><span class="small muted" id="ex-meta"></span></div>
+      <p class="small muted" style="margin:0">La IA lee <b>solo lo que tú has escrito</b> de cada operación (tu explicación, tus comentarios y tu estrategia explicada por ti) y saca de ahí tu estrategia: qué tipos de operación haces, por qué entras, cómo gestionas y qué explicaciones acompañan a tus ganadoras y a tus perdedoras. Cuantas más operaciones expliques, mejor sale.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn primary" id="ex-go" data-ai>Analizar mi estrategia con mis explicaciones</button><span class="small muted" id="ex-st" role="status"></span></div>
+      <div id="ex-out" style="display:flex;flex-direction:column;gap:12px"></div>
+    </div>
     <div id="s-profile" hidden class="grid" style="gap:16px">
       <div class="panel">
         <div class="panel-head"><h3>Resumen <button type="button" class="btn small" data-sq-sec="Resumen" title="Corregir este apartado" aria-label="Corregir «Resumen»">✏️</button></h3><span class="pill" id="s-conf"></span></div>
@@ -989,7 +995,7 @@ function diagnose(ts, min = 3) {
 // Estado y almacenamiento
 // =====================================================================
 const use = n => window.claude?.use ? window.claude.use(n) : Promise.resolve(null);
-const state = {myStrat: {fx: null, fut: null}, db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profiles: {fx: null, fut: null}, stratChats: {fx: null, fut: null}, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
+const state = {exStrat: {fx: null, fut: null}, myStrat: {fx: null, fut: null}, db: null, uid: null, trades: [], briefings: [], sample: null, assets: null, profiles: {fx: null, fut: null}, stratChats: {fx: null, fut: null}, formShots: [], pendingFiles: [], formAI: "", imgLimit: 0, market: {}, loaded: false, filter: {}, editing: null};
 // Una estrategia (y su conversación) por mercado: Forex y Futuros
 const MK_LBL = {fx: "Forex", fut: "Futuros"};
 const mkOf = pair => INS(pair)?.grupo === "fut" ? "fut" : "fx";
@@ -1038,6 +1044,7 @@ async function boot() {
     for (const mk of ["fx", "fut"]) { const prof = snap.docs.find(d => d.id === PROF_DOC(mk)); state.profiles[mk] = prof ? prof.data() : null; }
     const beh = snap.docs.find(d => d.id === "behavior_report"); state.behaviorReport = beh ? beh.data() : null;
     for (const mk of ["fx", "fut"]) { const ms = snap.docs.find(d => d.id === MY_DOC(mk)); state.myStrat[mk] = ms ? ms.data() : null; }
+    for (const mk of ["fx", "fut"]) { const ex = snap.docs.find(d => d.id === EX_DOC(mk)); state.exStrat[mk] = ex ? ex.data() : null; }
     const rep = snap.docs.find(d => d.id === "coach_report");
     if (rep && !$("#c-out").textContent) { const d = rep.data(); $("#c-out").innerHTML = mdLite(d.text || ""); $("#c-last").textContent = "Último informe: " + (d.date || ""); }
     state.loaded = true;
@@ -3579,7 +3586,66 @@ document.addEventListener("click", e => {
 });
 $("#sq-form").addEventListener("submit", e => { e.preventDefault(); askStrategy($("#sq-txt").value); });
 $("#sq-txt").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askStrategy($("#sq-txt").value); } });
+// ---- Mi estrategia según mis explicaciones (solo lo que escribe el trader) ----
+const EX_DOC = mk => mk === "fut" ? "strategy_from_expl_fut" : "strategy_from_expl";
+const userText = t => [(t.explicacion || "").trim(), traderComments(t), /^(Creada automáticamente|Importada de)/.test(t.notes || "") ? "" : (t.notes || "").trim()].filter(Boolean).join(" / ");
+function renderExStrat() {
+  const mk = curMk(), ts = mkTrades(mk, true), withTxt = ts.filter(t => userText(t)), D = state.exStrat[mk];
+  $("#ex-meta").textContent = `${MK_LBL[mk]} · ${withTxt.length} de ${ts.length} operaciones con explicación tuya`;
+  if (!$("#ex-st").dataset.busy) $("#ex-st").textContent = D ? `Último análisis: ${new Date(D.at).toLocaleDateString("es-ES")} con ${D.n} operaciones explicadas${withTxt.length > D.n ? ` · desde entonces has explicado ${withTxt.length - D.n} más` : ""}` : "";
+  const R = D?.r; if (!R) { $("#ex-out").innerHTML = ""; return; }
+  const li = a => (a || []).map(x => `<li>${esc(x)}</li>`).join("") || `<li class="muted">—</li>`;
+  $("#ex-out").innerHTML = `
+    ${R.resumen ? `<div class="banner info">${esc(R.resumen)}</div>` : ""}
+    ${R.tipos?.length ? `<div><h3 style="margin:0 0 6px">Tus tipos de operación (según cómo los explicas)</h3><div class="tablebox"><table><thead><tr><th>Tipo</th><th>Cómo lo describes</th><th class="n">Ops</th><th class="n">WR</th><th class="n">R total</th><th>Ejemplos</th></tr></thead><tbody>${R.tipos.map(x => `<tr><td><b>${esc(x.nombre)}</b></td><td class="small">${esc(x.descripcion || "")}</td><td class="n">${esc(x.operaciones ?? "—")}</td><td class="n">${x.wr == null ? "—" : esc(x.wr) + "%"}</td><td class="n ${cls(+x.r_total)}">${x.r_total == null ? "—" : fmtR(+x.r_total)}</td><td class="small muted">${esc((x.ejemplos || []).join(", "))}</td></tr>`).join("")}</tbody></table></div></div>` : ""}
+    <div class="grid g2">
+      <div><h3 style="margin:0 0 6px">Tu modelo de entrada, con tus palabras</h3><ol class="clean">${li(R.pasos)}</ol></div>
+      <div><h3 style="margin:0 0 6px">Cómo gestionas</h3><ul class="clean">${li(R.gestion)}</ul></div>
+    </div>
+    <div class="grid g2">
+      <div><h3 style="margin:0 0 6px" class="pos">Lo que dices en tus ganadoras</h3><ul class="clean">${li(R.en_ganadoras)}</ul></div>
+      <div><h3 style="margin:0 0 6px" class="neg">Lo que dices en tus perdedoras</h3><ul class="clean">${li(R.en_perdedoras)}</ul></div>
+    </div>
+    ${R.contradicciones?.length ? `<div><h3 style="margin:0 0 6px">Donde lo que explicas no cuadra con lo que pasa</h3><ul class="clean">${li(R.contradicciones)}</ul></div>` : ""}
+    <div class="grid g2">
+      <div><h3 style="margin:0 0 6px">Checklist sacada de tus explicaciones</h3><ul class="clean checklist">${li(R.checklist)}</ul></div>
+      <div><h3 style="margin:0 0 6px">Reglas que te propongo</h3><ul class="clean">${li(R.reglas)}</ul></div>
+    </div>
+    ${R.falta ? `<p class="small muted" style="margin:0"><b>Para afinarlo:</b> ${esc(R.falta)}</p>` : ""}
+    ${state.profile ? `<div class="row" style="gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="ex-apply">Pasar a «Mi estrategia» (resumen, modelo de entrada, checklist y reglas)</button><span class="small muted">Se puede deshacer desde el chat de la estrategia.</span></div>` : `<p class="small muted" style="margin:0">Cuando detectes tu estrategia con IA (botón de arriba), podrás pasar este análisis a ella.</p>`}`;
+}
+$("#ex-go").addEventListener("click", async () => {
+  const mk = curMk(), st = $("#ex-st"), btn = $("#ex-go");
+  const ts = mkTrades(mk, true).filter(t => userText(t)).sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
+  if (!ts.length) { st.textContent = `Aún no has explicado ninguna operación de ${MK_LBL[mk]}. Escribe «Tu explicación» en «Mis operaciones» (o al abrir la foto) y vuelve aquí.`; return; }
+  if (!state.sample) { st.textContent = "La IA no está disponible en esta vista: abre la página en claude.ai con tu cuenta."; return; }
+  const rows = ts.slice(-200).map(t => ({fecha: t.date, hora: t.time, cuenta: t.cuenta, par: t.pair, dir: t.direction, resultado: t.result, r: t.r, rr_plan: t.rr == null ? null : +t.rr.toFixed(2), sesion: t.session, explicacion: userText(t).slice(0, 900)}));
+  const my = (state.myStrat?.[mk]?.texto || "").trim();
+  const prompt = `${COACH}
+Tarea: describir la ESTRATEGIA del trader en ${MK_LBL[mk].toUpperCase()} usando SOLO lo que él mismo ha escrito de cada operación (campo "explicacion"), no lo que detectó la IA en las capturas. Agrupa sus operaciones por el TIPO de operación que él describe (con sus palabras), calcula para cada tipo cuántas hay, el win rate (ganadas / (ganadas + perdidas)) y el R total con los datos de la lista, y saca su modelo de entrada, su gestión, qué explicaciones se repiten en sus ganadoras y en sus perdedoras, y dónde lo que explica no cuadra con el resultado. Distingue Real de Backtest cuando importe. Cita fechas como ejemplos. Si una conclusión sale de menos de 5 operaciones, dilo. No inventes nada que no esté escrito. Tiene TDAH: frases cortas.
+${my ? `SU ESTRATEGIA EXPLICADA POR ÉL (para comparar): «${my.slice(0, 3000)}»` : ""}
+SUS OPERACIONES CON SU EXPLICACIÓN (${rows.length}): ${JSON.stringify(rows)}
+Responde SOLO con un objeto JSON: {"resumen":"3-4 frases: qué estrategia describe con sus explicaciones y cuál es su ventaja real","tipos":[{"nombre":"nombre corto del tipo de operación","descripcion":"cómo lo describe él","operaciones":n,"wr":número o null,"r_total":número o null,"ejemplos":["fechas"]}],"pasos":["su modelo de entrada paso a paso, con sus palabras"],"gestion":["cómo gestiona: stop, objetivo, breakeven, parciales…"],"en_ganadoras":["lo que repite en sus explicaciones de ganadoras, con cifras"],"en_perdedoras":["lo que repite en sus perdedoras, con cifras"],"contradicciones":["dónde lo que explica no cuadra con el resultado o con su estrategia escrita"],"checklist":["6-8 comprobaciones sí/no sacadas de sus explicaciones"],"reglas":["3-5 reglas con el impacto estimado"],"falta":"qué debería explicar en sus operaciones para afinar el análisis"}`;
+  btn.disabled = true; st.dataset.busy = "1"; st.textContent = `La IA está leyendo tus ${rows.length} explicaciones…`;
+  try {
+    const R = await state.sample.json(prompt, {modelTier: "complex"});
+    if (!R?.resumen) throw {code: "invalid_json"};
+    const doc = {kind: "strategy_from_expl", mercado: mk, r: R, n: ts.length, at: new Date().toISOString()};
+    state.exStrat[mk] = doc; if (col) { try { await col.doc(EX_DOC(mk)).set(doc); } catch {} }
+    st.dataset.busy = ""; renderExStrat();
+  } catch (e) { st.dataset.busy = ""; st.textContent = e.code === "invalid_json" ? "No pude generar el análisis; prueba otra vez." : AI_ERR[e.code] || "No se pudo: " + (e.message || e.code); }
+  finally { btn.disabled = !state.sample; }
+});
+document.addEventListener("click", async e => {
+  if (!e.target.closest("#ex-apply")) return;
+  const R = state.exStrat[curMk()]?.r; if (!R || !state.profile) return;
+  const cambios = [["resumen", R.resumen], ["pasos", R.pasos], ["checklist", R.checklist], ["reglas", R.reglas]].filter(([, v]) => v && (!Array.isArray(v) || v.length)).map(([campo, despues]) => ({campo, despues}));
+  const id = await applyFix({veredicto: "tienes_razon", cambios}, "Pasar a mi estrategia el análisis hecho con mis explicaciones");
+  await saveStratChat({...sqData(), mensajes: [...(sqData().mensajes || []), {rol: "ia", texto: "He pasado a tu estrategia el análisis hecho con tus explicaciones (resumen, modelo de entrada, checklist y reglas).", veredicto: "tienes_razon", fix: id, at: new Date().toISOString()}].slice(-40)});
+  renderStrategy(); $("#ex-st").textContent = "Pasado a «Mi estrategia». Puedes deshacerlo desde el chat de la estrategia.";
+});
 function renderStrategy() {
+  renderExStrat();
   const ts = mkTrades(), dec = ts.filter(t => t.win || t.loss), P = state.profile, mk = curMk();
   $("#s-mk-label").textContent = `Estrategia de ${MK_LBL[mk]} · ${mk === "fut" ? "Nasdaq 100 y S&P 500" : "EURUSD, GBPUSD y DXY"}`;
   $("#s-mk").innerHTML = ["fx", "fut"].map(k => `<button type="button" data-s-mk="${k}" aria-pressed="${k === mk}">${MK_LBL[k]}${state.profiles[k] ? "" : " <span class=\"muted\">(sin detectar)</span>"}</button>`).join("");
