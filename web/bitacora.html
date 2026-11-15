@@ -108,6 +108,8 @@ ul.drivers .ar{font:600 .95rem var(--f-mono);text-align:center}
 .sw-hours{display:grid;grid-template-columns:repeat(auto-fill,minmax(42px,1fr));gap:4px}
 .sw-hours div{border:1px solid var(--line);border-radius:4px;padding:4px 2px;text-align:center;font:500 .75rem var(--f-mono)}
 .sw-hours div b{display:block;font-size:.95rem}
+.pill.inr{outline:2px solid var(--up);outline-offset:1px;font-weight:700}
+.inr-badge{display:inline-block;font:700 .72rem var(--f-body);letter-spacing:.04em;padding:3px 8px;border-radius:4px;background:var(--up);color:#fff;white-space:nowrap}
 .sw-hours div.on{background:var(--up-soft);border-color:var(--up);color:var(--up)}
 #wq-quick .pill{white-space:normal;text-align:left;max-width:100%}
 .seg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:6px 0}
@@ -260,6 +262,7 @@ details summary{cursor:pointer;font-weight:600}
       <div id="mtf-body" hidden style="display:flex;flex-direction:column;gap:10px">
         <div class="small muted" id="mtf-meta"></div>
         <div class="chips" id="mtf-strip"></div>
+        <div class="banner info" id="mtf-inr" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"></div>
         <div class="small" id="mtf-sum"></div>
         <div class="tablebox"><table id="mtf-table"></table></div>
         <p class="small muted" style="margin:0"><b>Tu regla:</b> la vela 2 supera el máximo o el mínimo de la vela 1 y cierra dentro de su rango (si cierra justo en el extremo, no cuenta). <b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rangos según tu regla</b> = todas las velas que superaron el máximo o el mínimo de la vela anterior y cerraron dentro, en las últimas 5 velas cerradas (y más atrás, hasta 40 velas, las que siguen pendientes). Cada una dice si sigue <b>en rango</b> (pendiente de llegar al otro lado), si ya alcanzó el objetivo o si se <b>rompió</b>: el rango solo se rompe cuando una vela cierra fuera; si las velas siguientes vuelven a barrer y cierran dentro, sigue vivo.</p>
@@ -2418,14 +2421,14 @@ function structureOf(bars, dec) {
     if (H) sh.push(bars[i].h); if (L) sl.push(bars[i].l);
   }
   const px = bars[n - 1].c, f = v => v.toFixed(dec);
-  if (sh.length < 2 || sl.length < 2) return {label: "Rango", cls: "", detail: "Sin oscilaciones claras todavía"};
+  if (sh.length < 2 || sl.length < 2) return {label: "Lateral", cls: "", detail: "Sin oscilaciones claras todavía"};
   const [h1, h2] = sh.slice(-2), [l1, l2] = sl.slice(-2), hh = h2 > h1, hl = l2 > l1;
   const lv = {max: h2, min: l2};
   if (px > h2) return {label: "Alcista", cls: "up", detail: `Por encima del último máximo de swing (${f(h2)})${hl ? " con mínimos crecientes" : ""}`, ...lv};
   if (px < l2) return {label: "Bajista", cls: "down", detail: `Por debajo del último mínimo de swing (${f(l2)})${!hh ? " con máximos decrecientes" : ""}`, ...lv};
   if (hh && hl) return {label: "Alcista", cls: "up", detail: `Máximos y mínimos crecientes. Mínimo a defender: ${f(l2)}`, ...lv};
   if (!hh && !hl) return {label: "Bajista", cls: "down", detail: `Máximos y mínimos decrecientes. Máximo a defender: ${f(h2)}`, ...lv};
-  return {label: "Rango", cls: "warn", detail: `${hh ? "Expansión: máximo más alto y mínimo más bajo" : "Compresión: máximo más bajo y mínimo más alto"} (${f(l2)} – ${f(h2)})`, ...lv};
+  return {label: "Lateral", cls: "warn", detail: `${hh ? "Expansión: máximo más alto y mínimo más bajo" : "Compresión: máximo más bajo y mínimo más alto"} (${f(l2)} – ${f(h2)})`, ...lv};
 }
 // ---- Rangos por temporalidad ----
 // Rango de una vela = su máximo y su mínimo. Se mira cómo se comporta la vela actual frente al rango de la vela anterior
@@ -2500,6 +2503,7 @@ function mtfAnalysis(pair) {
     const s = seriesFor(tf, h1, d1, anchor, mins), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
     return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor)};
   });
+  out.forEach(r => { const g = r.rg; r.enRango = !!(g && (g.pend.length || g.now?.k === "formacion")); });
   out.market = ms; return out;
 }
 function mtfText(pair) {
@@ -2512,6 +2516,8 @@ function mtfText(pair) {
 function renderMTF() {
   const pair = $("#mtf-pair").value, m = state.market[pair];
   const a = mtfAnalysis(pair);
+  // en el selector, cuántas temporalidades están en rango en cada instrumento
+  for (const o of $("#mtf-pair").options) { const A = o.value === pair ? a : mtfAnalysis(o.value), n = A ? A.filter(r => r.enRango).length : 0; o.textContent = INS(o.value).label + (A ? ` · ${n} en rango` : ""); }
   $("#mtf-empty").hidden = !!a;
   $("#mtf-body").hidden = !a;
   if (!a) return;
@@ -2521,9 +2527,12 @@ function renderMTF() {
     + (MS.weekend ? `<div class="small">Mercado cerrado: las velas de hasta 1 semana ya están cerradas; los rangos se miden con el cierre del viernes.</div>` : "")
     + (MS.stale || MS.weekendNoClose ? `<div class="banner" style="margin-top:6px">Faltan velas: los datos no llegan hasta ahora${MS.weekendNoClose ? " (ni hasta el cierre del viernes)" : ""}, así que los rangos de las temporalidades bajas pueden estar mal. Se actualizan con la tarea diaria; también puedes subir tu CSV de TradingView abajo.</div>` : "");
   const bull = a.filter(r => r.st.label === "Alcista").length, bear = a.filter(r => r.st.label === "Bajista").length;
-  $("#mtf-strip").innerHTML = a.map(r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.name)} ${r.st.label === "Alcista" ? "↑" : r.st.label === "Bajista" ? "↓" : "↔"}</span>`).join(" ");
+  $("#mtf-strip").innerHTML = a.map(r => `<span class="pill ${r.st.cls}${r.enRango ? " inr" : ""}" title="${esc(r.st.detail)}${r.enRango ? " · EN RANGO" : ""}">${r.enRango ? "● " : ""}${esc(r.name)} ${r.st.label === "Alcista" ? "↑" : r.st.label === "Bajista" ? "↓" : "↔"}</span>`).join(" ") + `<div class="small muted" style="margin-top:4px">● con borde verde = temporalidad en rango según tu regla</div>`;
+  { const inr = a.filter(r => r.enRango);
+    $("#mtf-inr").innerHTML = inr.length ? `<b>En rango ahora (${inr.length} de ${a.length}):</b> ${inr.map(r => { const g = r.rg, x = g.now?.k === "formacion" ? g.now : g.pend[0], d = x?.dir === "Alcista" ? "↑" : x?.dir === "Bajista" ? "↓" : "↕";
+      return `<span class="inr-badge">${esc(r.name)} ${d}${x?.target ? " " + esc(x.target) : ""}${g.now?.k === "formacion" && !g.pend.length ? " · en formación" : ""}</span>`; }).join(" ")}` : `<b>Ninguna temporalidad está en rango ahora mismo.</b>`; }
   const form = a.filter(r => r.rg?.now?.k === "formacion"), npend = a.reduce((x, r) => x + (r.rg?.pend.length || 0), 0);
-  $("#mtf-sum").innerHTML = `<b>${bear}</b> temporalidades bajistas, <b>${bull}</b> alcistas y <b>${a.length - bull - bear}</b> en rango o sin datos. ` +
+  $("#mtf-sum").innerHTML = `<b>${bear}</b> temporalidades bajistas, <b>${bull}</b> alcistas y <b>${a.length - bull - bear}</b> laterales o sin datos. ` +
     (bear > bull * 2 ? "Dominio bajista claro: prioriza ventas." : bull > bear * 2 ? "Dominio alcista claro: prioriza compras." : "Estructura mixta: opera a favor de la temporalidad mayor y reduce tamaño.")
     + `<div style="margin-top:6px">${form.length ? `<b>Rangos en formación ahora:</b> ${form.map(r => `<span class="pill ${r.rg.now.cls}">${esc(r.name)} ${r.rg.now.dir === "Alcista" ? "↑" : r.rg.now.dir === "Bajista" ? "↓" : "↕"}${r.rg.now.target ? " obj. " + esc(r.rg.now.target) : ""}</span>`).join(" ")} <span class="muted">(la vela actual barrió un lado y está dentro; falta que cierre)</span>` : `<span class="muted">Ninguna vela abierta está barriendo un lado del rango anterior ahora mismo.</span>`} · <b>${a.reduce((x, r) => x + (r.rg?.list.length || 0), 0)}</b> rangos según tu regla en las últimas 5 velas de cada temporalidad, <b>${npend}</b> todavía pendientes de llegar al otro lado.</div>`;
   const dt = (ms, long) => new Date(ms).toLocaleString("es-ES", {timeZone: "Europe/Madrid", weekday: "short", day: "numeric", month: long ? "short" : undefined, hour: "2-digit", minute: "2-digit"});
@@ -2532,7 +2541,8 @@ function renderMTF() {
   const left = ms => { const d = ms - Date.now(); if (d <= 0) return "cerrando"; const h = Math.floor(d / 3600e3), m = Math.floor(d % 3600e3 / 6e4), D = Math.floor(h / 24); return D >= 2 ? `en ${D} días` : h ? `en ${h} h ${String(m).padStart(2, "0")} min` : `en ${m} min`; };
   const u = INS(pair).unit;
   table($("#mtf-table"), [
-    {h: "Temporalidad", f: r => r.name},
+    {h: "Temporalidad", html: 1, f: r => `<b>${esc(r.name)}</b>`},
+    {h: "¿En rango?", html: 1, f: r => r.enRango ? `<span class="inr-badge">EN RANGO</span>${(() => { const g = r.rg, x = g.now?.k === "formacion" ? g.now : g.pend[0]; return x?.target ? `<div class="small">${x.dir === "Alcista" ? "↑" : "↓"} obj. <b class="num">${esc(x.target)}</b></div>` : ""; })()}${r.rg.now?.k === "formacion" ? `<div class="small muted">vela actual en formación</div>` : ""}` : `<span class="small muted">No</span>`},
     {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.st.label)}</span>`},
     {h: "Rango (última vela cerrada)", html: 1, f: r => r.rg ? `<span class="num">${esc(r.rg.ref.h)}</span><br><span class="num">${esc(r.rg.ref.l)}</span><div class="small muted">${esc(r.rg.ref.size ?? "")} ${u}</div>` : "—"},
     {h: "Vela actual", html: 1, f: r => { const g = r.rg; if (!g) return "—"; if (!g.now) return `<span class="small muted">Cerrada. La siguiente vela se medirá contra este rango.</span>`;
