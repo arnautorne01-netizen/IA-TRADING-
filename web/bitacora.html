@@ -741,11 +741,13 @@ const INSTR = [
   {id: "EURUSD", label: "EURUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Euro FX (6E, CME)", grupo: "fx"},
   {id: "GBPUSD", label: "GBPUSD", dec: 5, pip: 0.0001, unit: "pips", fut: "Libra (6B, CME)", grupo: "fx"},
   {id: "DXY", label: "DXY", dec: 3, pip: 0.01, unit: "ptos", fut: "Futuros del dólar (DX, ICE)", grupo: "fx"},
-  {id: "NAS100", label: "Nasdaq 100", dec: 1, pip: 1, unit: "ptos", fut: "E-mini Nasdaq (NQ, CME)", grupo: "fut"},
-  {id: "SPX500", label: "S&P 500", dec: 1, pip: 1, unit: "ptos", fut: "E-mini S&P 500 (ES, CME)", grupo: "fut"},
+  {id: "NAS100", label: "Nasdaq 100", dec: 2, pip: 1, unit: "ptos", fut: "E-mini Nasdaq (NQ, CME)", grupo: "fut"},
+  {id: "SPX500", label: "S&P 500", dec: 2, pip: 1, unit: "ptos", fut: "E-mini S&P 500 (ES, CME)", grupo: "fut"},
 ];
 const PAIRS = INSTR.map(i => i.id);
-const INS = id => INSTR.find(i => i.id === id) || INSTR[0];
+// Instrumentos extra solo para la pestaña de rangos (no entran en el sesgo ni en las noticias)
+const RANGE_EXTRA = [{id: "MNQ", label: "MNQ (micro Nasdaq)", dec: 2, pip: 1, unit: "ptos", fut: "Micro E-mini Nasdaq (MNQ, CME)", grupo: "fut"}];
+const INS = id => INSTR.find(i => i.id === id) || RANGE_EXTRA.find(i => i.id === id) || INSTR[0];
 const MERCADOS = {fx: "FX", fut: "Futuros", todo: "Todo"};
 const VIS = () => PAIRS.filter(p => state.mercado === "todo" || INS(p).grupo === (state.mercado || "fx"));
 const inMercado = pair => state.mercado === "todo" || INS(pair).grupo === (state.mercado || "fx");
@@ -3040,7 +3042,8 @@ state.mercado = (() => { try { return localStorage.getItem("mercado") || "fx"; }
 function applyMercado() {
   document.querySelectorAll("#mercado-seg [data-mercado]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mercado === state.mercado)));
   const vis = VIS(), opts = ids => ids.map(id => `<option value="${id}">${INS(id).label}</option>`).join("");
-  const mp = $("#mtf-pair"), cur = mp.value; mp.innerHTML = opts(vis); mp.value = vis.includes(cur) ? cur : vis[0];
+  const rv = [...vis, ...RANGE_EXTRA.filter(x => state.mercado === "todo" || x.grupo === (state.mercado || "fx")).map(x => x.id)];
+  const mp = $("#mtf-pair"), cur = mp.value; mp.innerHTML = opts(rv); mp.value = rv.includes(cur) ? cur : rv[0];
   const jp = $("#j-pair"), jc = jp.value; jp.innerHTML = `<option value="">Todos</option>` + opts(vis); jp.value = vis.includes(jc) ? jc : "";
   const tp = $("#t-pair"), tc = tp.value; tp.innerHTML = opts([...vis, ...PAIRS.filter(p => !vis.includes(p))]); tp.value = state.editing ? tc : vis[0];
   document.body.dataset.mercado = state.mercado;
