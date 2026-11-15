@@ -253,7 +253,7 @@ details summary{cursor:pointer;font-weight:600}
     </div>
     <div class="panel" id="mtf-panel">
       <div class="panel-head">
-        <div><h3>Estructura multitemporal y rangos</h3><div class="small muted">Velas de 1H a 1 año, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
+        <div><h3>Estructura multitemporal y rangos</h3><div class="small muted">Velas de 30 minutos (si hay datos de 30M) y de 1H a 1 año, ancladas como en TradingView: 17:00 de Nueva York en forex y 18:00 en futuros (CME)</div></div>
         <select id="mtf-pair" style="width:auto" aria-label="Par"></select>
       </div>
       <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
@@ -262,7 +262,7 @@ details summary{cursor:pointer;font-weight:600}
         <div class="chips" id="mtf-strip"></div>
         <div class="small" id="mtf-sum"></div>
         <div class="tablebox"><table id="mtf-table"></table></div>
-        <p class="small muted" style="margin:0"><b>Tu regla:</b> la vela 2 supera el máximo o el mínimo de la vela 1 y cierra dentro de su rango (si cierra justo en el extremo, no cuenta). <b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rangos según tu regla</b> = todas las velas que superaron el máximo o el mínimo de la vela anterior y cerraron dentro, en las últimas 5 velas cerradas (y más atrás, hasta 40 velas, las que siguen pendientes). Cada una dice si está <b>pendiente</b> de llegar al otro lado, si ya alcanzó el objetivo o si el precio superó después el barrido.</p>
+        <p class="small muted" style="margin:0"><b>Tu regla:</b> la vela 2 supera el máximo o el mínimo de la vela 1 y cierra dentro de su rango (si cierra justo en el extremo, no cuenta). <b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rangos según tu regla</b> = todas las velas que superaron el máximo o el mínimo de la vela anterior y cerraron dentro, en las últimas 5 velas cerradas (y más atrás, hasta 40 velas, las que siguen pendientes). Cada una dice si sigue <b>en rango</b> (pendiente de llegar al otro lado), si ya alcanzó el objetivo o si se <b>rompió</b>: el rango solo se rompe cuando una vela cierra fuera; si las velas siguientes vuelven a barrer y cierran dentro, sigue vivo.</p>
       </div>
       <details><summary class="small">Subir velas desde TradingView</summary>
         <p class="small" style="margin:6px 0">En TradingView abre el gráfico del par en <b>1 hora</b>, carga todo el historial que puedas (cuanto más, mejor: un año da para 1 mes y 3 meses) y usa «Exportar datos del gráfico». Sube aquí el archivo con el par correcto elegido arriba. Opcional: sube también el gráfico <b>diario</b> para tener más historia en 1 mes y 3 meses.</p>
@@ -1033,7 +1033,8 @@ async function boot() {
     for (const d of snap.docs) {
       const [pair, kind] = d.id.split("_"); if (!pair || !kind) continue;
       const data = d.data();
-      state.market[pair] = {...state.market[pair], [kind]: unpackBars(data), source: data.source || state.market[pair]?.source};
+      const prev = state.market[pair] || {}, sources = {...(prev.sources || {}), [kind]: data.source || ""};
+      state.market[pair] = {...prev, [kind]: unpackBars(data), sources, source: sources.h1 || data.source || prev.source};
     }
     if (activeTab() === "hoy") renderMTF();
   }, () => {});
@@ -2323,7 +2324,7 @@ $("#brief-picker").addEventListener("change", renderBriefing);
 // Estructura multitemporal y rangos por temporalidad
 // Velas ancladas al inicio del día forex (17:00 de Nueva York).
 // =====================================================================
-const MTF = [["1H", 1], ["2H", 2], ["3H", 3], ["4H", 4], ["5H", 5], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
+const MTF = [["30M", "m30"], ["1H", 1], ["2H", 2], ["3H", 3], ["4H", 4], ["5H", 5], ["6H", 6], ["8H", 8], ["9H", 9], ["10H", 10], ["12H", 12], ["14H", 14], ["16H", 16], ["18H", 18], ["20H", 20], ["24H", 24],
   ["2D", "D2"], ["3D", "D3"], ["4D", "D4"], ["5D", "D5"], ["6D", "D6"], ["7D", "D7"], ["1 semana", "W"], ["2 semanas", "W2"], ["1 mes", "M"], ["2 meses", "M2"], ["3 meses", "Q"], ["6 meses", "M6"], ["1 año", "Y"]];
 // Velas de varios meses: índice del grupo (meses desde enero del año 0) y cuándo cierra
 const monthGroup = (day, n) => Math.floor((+day.slice(0, 4) * 12 + +day.slice(5, 7) - 1) / n);
@@ -2342,7 +2343,7 @@ function nyOffsetMin(ms) {
 const anchorOf = pair => INS(pair).grupo === "fut" ? 360 : 420;
 function fxClock(ms, anchor = 420) {
   const f = new Date(ms + (nyOffsetMin(ms) + anchor) * 6e4);
-  return {day: f.toISOString().slice(0, 10), hour: f.getUTCHours(), y: f.getUTCFullYear(), m: f.getUTCMonth()};
+  return {day: f.toISOString().slice(0, 10), hour: f.getUTCHours(), min: f.getUTCMinutes(), y: f.getUTCFullYear(), m: f.getUTCMonth()};
 }
 function bizIndex(day) {
   const days = Math.round((Date.parse(day + "T00:00:00Z") - Date.parse("2000-01-03T00:00:00Z")) / 864e5);
@@ -2359,7 +2360,8 @@ function aggregate(bars, keyFn) {
   if (cur) out.push(cur);
   return out;
 }
-function seriesFor(tf, h1, d1, anchor = 420) {
+function seriesFor(tf, h1, d1, anchor = 420, m30 = []) {
+  if (tf === "m30") return aggregate(m30, b => { const f = fxClock(b.t * 1000, anchor); return f.day + "|" + Math.floor((f.hour * 60 + f.min) / 30); });
   if (typeof tf === "number") {
     if (!h1.length) return [];
     return aggregate(h1, b => { const f = fxClock(b.t * 1000, anchor); return tf >= 24 ? f.day : f.day + "|" + Math.floor(f.hour / tf); });
@@ -2396,7 +2398,7 @@ function marketState(h1, anchor) {
 // ¿La última vela de esta temporalidad ya está cerrada? (solo se puede saber con el mercado cerrado el fin de semana)
 function lastClosed(tf, series, ms) {
   if (!ms.weekend || !series.length) return false;
-  if (typeof tf === "number" || tf === "W") return true;
+  if (typeof tf === "number" || tf === "W" || tf === "m30") return true;
   if (tf[0] === "D") return series[series.length - 1].cnt >= +tf.slice(1);
   return false; // 1 mes y 3 meses siguen abiertas
 }
@@ -2435,6 +2437,7 @@ const addDaysISO = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * 864
 function lastBizDay(y, m) { let d = new Date(Date.UTC(y, m + 1, 0)); while (d.getUTCDay() % 6 === 0) d = new Date(d - 864e5); return d.toISOString().slice(0, 10); }
 // Cuándo cierra una vela (ms UTC)
 function candleEnd(tf, c, anchor) {
+  if (tf === "m30") { const [day, b] = String(c.k).split("|"); return clockToUtc(day, (+b + 1) / 2, anchor); }
   if (typeof tf === "number") { const [day, b] = String(c.k).split("|"); const endH = tf >= 24 ? 24 : Math.min(24, (+b + 1) * tf); return clockToUtc(day, endH, anchor); }
   if (tf[0] === "D") { const n = +tf.slice(1), idx = (+c.k + 1) * n - 1, day = addDaysISO("2000-01-03", Math.floor(idx / 5) * 7 + idx % 5); return clockToUtc(day, 24, anchor); }
   if (tf === "W") return clockToUtc(addDaysISO(c.k, 4), 24, anchor);
@@ -2470,15 +2473,16 @@ function rangeOf(s, closed, tf, dec, pip, anchor) {
     let r;
     if (hi && lo) r = {...base, dir: "Ambos", cls: "warn", st: "ambos", stText: `superó el máximo (${f(c2.h)}) y el mínimo (${f(c2.l)}) y cerró dentro`};
     else {
-      const bear = hi, target = bear ? c1.l : c1.h, inval = bear ? c2.h : c2.l;
-      let st = "pendiente", when = null;
+      // El rango de la vela 1 sigue vivo mientras las velas siguientes cierren dentro (aunque vuelvan a barrer);
+      // se cumple al tocar el lado opuesto y se rompe solo si una vela CIERRA fuera.
+      const bear = hi, target = bear ? c1.l : c1.h, edge = bear ? c1.h : c1.l;
+      let st = "pendiente", when = null, rebarridos = 0;
       for (const b of s.slice(i + 1)) {
-        const hit = bear ? b.l <= target : b.h >= target, bad = bear ? b.h > inval : b.l < inval;
-        if (hit && bad) { st = "ambos_despues"; when = b.t; break; }
-        if (hit) { st = "alcanzado"; when = b.t; break; }
-        if (bad) { st = "invalidado"; when = b.t; break; }
+        if (bear ? b.l < target : b.h > target) { st = "alcanzado"; when = b.t; break; } // como el barrido: hay que superarlo, tocarlo no basta
+        if (b.c > c1.h || b.c < c1.l) { st = "roto"; when = b.t; break; }
+        if (bear ? b.h > edge : b.l < edge) rebarridos++;
       }
-      r = {...base, dir: bear ? "Bajista" : "Alcista", cls: bear ? "down" : "up", st, when, target: f(target), tdist: dist(target), inval: f(inval)};
+      r = {...base, dir: bear ? "Bajista" : "Alcista", cls: bear ? "down" : "up", st, when, rebarridos, target: f(target), tdist: dist(target), inval: f(edge), sweep: f(bear ? c2.h : c2.l)};
     }
     if (ago < 5 || r.st === "pendiente") list.push(r);
   }
@@ -2488,10 +2492,10 @@ function rangeOf(s, closed, tf, dec, pip, anchor) {
 function mtfAnalysis(pair) {
   const m = state.market[pair]; if (!m?.h1?.length && !m?.d1?.length) return null;
   const dec = INS(pair).dec, pip = INS(pair).pip, anchor = anchorOf(pair);
-  const h1 = cleanH1(m.h1 || [], anchor), d1 = dailySeries(h1, m.d1 || [], anchor, INS(pair).grupo === "fx" && /yahoo/i.test(m.source || ""));
-  const ms = marketState(h1, anchor);
+  const h1 = cleanH1(m.h1 || [], anchor), d1 = dailySeries(h1, m.d1 || [], anchor, INS(pair).grupo === "fx" && /yahoo/i.test(m.sources?.d1 || m.source || ""));
+  const ms = marketState(h1, anchor), m30 = cleanH1(m.m30 || [], anchor);
   const out = MTF.map(([name, tf]) => {
-    const s = seriesFor(tf, h1, d1, anchor), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
+    const s = seriesFor(tf, h1, d1, anchor, m30), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
     return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor)};
   });
   out.market = ms; return out;
@@ -2499,8 +2503,8 @@ function mtfAnalysis(pair) {
 function mtfText(pair) {
   const a = mtfAnalysis(pair); if (!a) return "";
   return `${pair}: ` + a.map(r => { const g = r.rg; if (!g) return `${r.name} ${r.st.label.toLowerCase()}`;
-    const now = g.now ? (g.now.k === "formacion" ? `vela actual en formación: ${g.now.text.toLowerCase()} ${g.now.target ? ` (si cierra dentro, objetivo ${g.now.target}, barrido ${g.now.inval})` : ""}` : `vela actual: ${g.now.text.toLowerCase()}`) : "vela cerrada";
-    const pe = g.list.map(x => `rango ${x.rango} (${x.dir.toLowerCase()}, ${x.st === "pendiente" ? "pendiente, objetivo " + x.target : x.st === "alcanzado" ? "objetivo " + x.target + " ya alcanzado" : x.st === "invalidado" ? "el precio superó el barrido " + x.inval : "superó los dos lados"})`).join("; ");
+    const now = g.now ? (g.now.k === "formacion" ? `vela actual en formación: ${g.now.text.toLowerCase()} ${g.now.target ? ` (si cierra dentro, objetivo ${g.now.target})` : ""}` : `vela actual: ${g.now.text.toLowerCase()}`) : "vela cerrada";
+    const pe = g.list.map(x => `rango ${x.rango} (${x.dir.toLowerCase()}, ${x.st === "pendiente" ? "pendiente, objetivo " + x.target : x.st === "alcanzado" ? "objetivo " + x.target + " ya alcanzado" : x.st === "roto" ? "roto, una vela cerró fuera" : "superó los dos lados"})`).join("; ");
     return `${r.name} ${r.st.label.toLowerCase()} [rango ${g.ref.h}-${g.ref.l}; ${now}${pe ? "; " + pe : ""}]`; }).join(", ");
 }
 function renderMTF() {
@@ -2528,11 +2532,11 @@ function renderMTF() {
     {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.st.label)}</span>`},
     {h: "Rango (última vela cerrada)", html: 1, f: r => r.rg ? `<span class="num">${esc(r.rg.ref.h)}</span><br><span class="num">${esc(r.rg.ref.l)}</span><div class="small muted">${esc(r.rg.ref.size ?? "")} ${u}</div>` : "—"},
     {h: "Vela actual", html: 1, f: r => { const g = r.rg; if (!g) return "—"; if (!g.now) return `<span class="small muted">Cerrada. La siguiente vela se medirá contra este rango.</span>`;
-      const w = g.now; return `${w.k === "formacion" ? `<span class="pill ${w.cls}">Rango en formación ${w.dir === "Alcista" ? "↑" : "↓"}</span> ` : w.k === "fuera" ? `<span class="pill warn">Fuera</span> ` : ""}<span class="small">${esc(w.text)}</span>${w.k === "formacion" ? `<div class="small">Si cierra dentro → objetivo <b class="num">${esc(w.target)}</b> (${w.tdist} ${u}) · invalida <span class="num">${esc(w.inval)}</span></div>` : ""}`; }},
+      const w = g.now; return `${w.k === "formacion" ? `<span class="pill ${w.cls}">Rango en formación ${w.dir === "Alcista" ? "↑" : "↓"}</span> ` : w.k === "fuera" ? `<span class="pill warn">Fuera</span> ` : ""}<span class="small">${esc(w.text)}</span>${w.k === "formacion" ? `<div class="small">Si cierra dentro → objetivo <b class="num">${esc(w.target)}</b> (${w.tdist} ${u}); si cierra fuera, no hay rango</div>` : ""}`; }},
     {h: "Cierra", html: 1, f: r => r.rg?.now ? `<span class="small">${esc(left(r.rg.now.closeAt))}</span><div class="small muted">${esc(dt(r.rg.now.closeAt, true))}</div>` : `<span class="small muted">—</span>`},
     {h: "Rangos según tu regla", html: 1, f: r => { const L = r.rg?.list || []; if (!L.length) return `<span class="muted small">Ninguno en las últimas 5 velas</span>`;
-      const ST = {pendiente: ["Pendiente", "up"], alcanzado: ["Objetivo alcanzado", ""], invalidado: ["Superó el barrido", "down"], ambos_despues: ["Objetivo y barrido en la misma vela", "warn"], ambos: ["Superó los dos lados", "warn"]};
-      return L.map(x => { const S = ST[x.st] || [x.st, ""]; return `<div class="small" style="margin-bottom:4px"><span class="pill ${x.cls}">${x.dir === "Alcista" ? "↑" : x.dir === "Bajista" ? "↓" : "↕"}</span> <span class="pill ${S[1]}">${esc(S[0])}</span> rango <span class="num">${esc(x.rango)}</span>${x.target ? ` · objetivo <b class="num">${esc(x.target)}</b>${x.st === "pendiente" ? ` (${x.tdist} ${u})` : ""} · barrido <span class="num">${esc(x.inval)}</span>` : ` · ${esc(x.stText)}`} <span class="muted">· vela 2: ${esc(dt(x.t * 1000, true))}${x.when ? ` · ${x.st === "alcanzado" ? "llegó" : "pasó"} el ${esc(dt(x.when * 1000, true))}` : ""}</span></div>`; }).join(""); }},
+      const ST = {pendiente: ["En rango · pendiente", "up"], alcanzado: ["Objetivo alcanzado", ""], roto: ["Roto: cerró fuera", "down"], ambos: ["Superó los dos lados", "warn"]};
+      return L.map(x => { const S = ST[x.st] || [x.st, ""]; return `<div class="small" style="margin-bottom:4px"><span class="pill ${x.cls}">${x.dir === "Alcista" ? "↑" : x.dir === "Bajista" ? "↓" : "↕"}</span> <span class="pill ${S[1]}">${esc(S[0])}</span> rango <span class="num">${esc(x.rango)}</span>${x.target ? ` · objetivo <b class="num">${esc(x.target)}</b>${x.st === "pendiente" ? ` (${x.tdist} ${u})` : ""} · barrió hasta <span class="num">${esc(x.sweep)}</span>${x.rebarridos ? ` · ${x.rebarridos} ${x.rebarridos === 1 ? "vela más ha barrido" : "velas más han barrido"} y cerrado dentro` : ""} · se rompe si una vela cierra fuera de <span class="num">${esc(x.rango)}</span>` : ` · ${esc(x.stText)}`} <span class="muted">· vela 2: ${esc(dt(x.t * 1000, true))}${x.when ? ` · ${x.st === "alcanzado" ? "llegó" : "cerró fuera"} el ${esc(dt(x.when * 1000, true))}` : ""}</span></div>`; }).join(""); }},
   ], a);
 }
 // --- datos de velas: CSV de TradingView o los que guarda la tarea diaria
