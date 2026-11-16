@@ -85,6 +85,9 @@ def agrupar(velas5, paso):
 
 def main():
     entrada, salida = sys.argv[1], sys.argv[2]
+    # ArtifactData con out_dir guarda los documentos en <out_dir>/market/: se acepta cualquiera de las dos carpetas
+    if not os.path.exists(os.path.join(entrada, "EURUSD_m5.json")) and os.path.isdir(os.path.join(entrada, "market")):
+        entrada = os.path.join(entrada, "market")
     os.makedirs(salida, exist_ok=True)
     ahora = dt.datetime.now(dt.timezone.utc)
     if not mercado_abierto(ahora):
