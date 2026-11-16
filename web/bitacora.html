@@ -311,7 +311,10 @@ details summary{cursor:pointer;font-weight:600}
       <div class="small muted">Tu regla: la vela 2 <b>supera</b> el máximo o el mínimo de la vela 1 y <b>cierra dentro</b> de su rango. El objetivo es el otro lado. El rango sigue vivo mientras las velas cierren dentro y se rompe si una vela cierra fuera. Velas de 5 minutos a 1 año, ancladas como en TradingView (forex 17:00 de Nueva York, futuros 18:00).</div>
     </div>
     <div class="panel" id="mtf-panel">
-      <div class="seg" id="mtf-btns" role="group" aria-label="Instrumento" style="margin:0"></div>
+      <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div class="seg" id="mtf-btns" role="group" aria-label="Instrumento" style="margin:0"></div>
+        <div class="row" style="gap:8px"><button type="button" class="btn" id="mtf-refresh" title="Descarga ahora las velas nuevas de EURUSD y GBPUSD (Twelve Data). Se hace solo cada hora.">🔄 Actualizar velas ahora</button><span class="small muted" id="mtf-refresh-st" role="status"></span></div>
+      </div>
       <select id="mtf-pair" hidden aria-hidden="true"></select>
       <div id="mtf-empty" class="banner info">Todavía no hay velas cargadas para este par. Se cargan solas cada mañana cuando la tarea diaria puede descargar precios; mientras tanto puedes subirlas tú abajo.</div>
       <div id="mtf-body" hidden style="display:flex;flex-direction:column;gap:10px">
@@ -3337,6 +3340,23 @@ function fixOutcome(op) {
 // Si esta vista no deja enviar imágenes a la IA: se guardan y las procesa la tarea en segundo plano
 const INTRADAY_TRIGGER = "trig_01WGY2PVFYuxoh7EzktwzQMM";
 const PROCESS_TRIGGER = "trig_015NesUkGVEicjuX5EWoMYv4";
+// Tarea que descarga las velas (Twelve Data) para la pestaña de rangos: cada hora y al pulsar «Actualizar velas ahora»
+const CANDLES_TRIGGER = "trig_01CBtNtgWMXH18DLyVMPsrhU";
+document.addEventListener("click", async e => {
+  if (!e.target.closest("#mtf-refresh")) return;
+  const b = $("#mtf-refresh"), st = $("#mtf-refresh-st");
+  let last = 0; try { last = +localStorage.getItem("candlesFired") || 0; } catch {}
+  if (Date.now() - last < 3 * 60e3) { st.textContent = "Ya se está actualizando: espera 2-3 minutos."; return; }
+  const mcp = await use("mcp");
+  if (!mcp) { st.textContent = "No disponible en esta vista: abre la página en claude.ai con tu cuenta."; return; }
+  b.disabled = true; st.textContent = "Pidiendo velas nuevas…";
+  try {
+    await mcp.callTool("Claude Code Remote", "fire_trigger", {trigger_id: CANDLES_TRIGGER, text: "El trader ha pulsado «Actualizar velas ahora»."});
+    try { localStorage.setItem("candlesFired", String(Date.now())); } catch {}
+    st.textContent = "Actualizando: las velas nuevas aparecerán solas en 2-3 minutos.";
+  } catch (err) { st.textContent = "No se pudo lanzar la actualización: " + (err.message || err.code || err); }
+  finally { setTimeout(() => { b.disabled = false; }, 3 * 60e3); }
+});
 async function queueShots(files) {
   const out = $("#auto-out");
   const box = document.createElement("div"); box.className = "banner info"; out.prepend(box);
