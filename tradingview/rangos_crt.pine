@@ -1,14 +1,18 @@
 //@version=6
 // Rangos CRT multitemporales · regla del trader (Bitácora de trading)
 // Rango: la vela 2 SUPERA el máximo o el mínimo de la vela 1 y CIERRA DENTRO de su rango (cerrar justo en el extremo no cuenta).
-// Entre la vela 1 y la vela 2 puede haber velas interiores: el rango de la vela 1 sigue vigente mientras las velas cierren dentro.
-// Objetivo: el otro lado de la vela 1. Se cumple cuando el precio lo SUPERA y se rompe si una vela cierra fuera de la vela 1.
+// Entre la vela 1 y la vela 2 puede haber velas interiores (cierran dentro sin superar ningún extremo).
+// Objetivo: el otro lado de la vela 1. Se cumple cuando el precio lo SUPERA; se rompe si una vela cierra fuera de la vela 1.
 // Si la vela 2 supera los dos lados a la vez, no queda objetivo y no se marca.
-indicator("Rangos CRT multitemporal", overlay = true, max_lines_count = 120, max_labels_count = 120)
+// Los rangos se confirman con velas CERRADAS de cada temporalidad, así que en el historial (backtesting) y en tiempo real
+// sale exactamente lo mismo. El «*» (vela 2 todavía abierta) solo se ve en la vela actual.
+indicator("Rangos CRT multitemporal", overlay = true, max_lines_count = 500, max_labels_count = 500, max_bars_back = 300)
 
 i_tfs   = input.string("5,15,30,60,120,180,240,300,360,420,480,540,600,660,720,780,840,900,960,1020,1080,1140,1200,D,2D,3D,4D,5D,6D,7D,W,2W,M,2M,3M,6M,12M", "Temporalidades (separadas por comas)", tooltip = "Minutos (60 = 1H, 240 = 4H…) o D, 2D… W, 2W, M, 3M, 6M, 12M. Como máximo 40.")
-i_n     = input.int(40, "Velas hacia atrás para buscar rangos", minval = 5, maxval = 100)
+i_n     = input.int(40, "Velas hacia atrás para buscar la vela 1", minval = 5, maxval = 100)
+i_days  = input.int(30, "Días de historial (backtesting)", minval = 1, maxval = 3650, tooltip = "Cuántos días hacia atrás se dibujan los rangos. Más días = más lento.")
 i_lines = input.bool(true, "Dibujar líneas de los objetivos")
+i_hist  = input.bool(true, "Dejar dibujados los rangos ya terminados")
 i_table = input.bool(true, "Mostrar tabla")
 i_pos   = input.string("Arriba a la derecha", "Posición de la tabla", options = ["Arriba a la derecha", "Arriba a la izquierda", "Abajo a la derecha", "Abajo a la izquierda"])
 i_cols  = input.int(6, "Columnas de la tabla", minval = 2, maxval = 10)
@@ -16,49 +20,44 @@ c_up    = input.color(color.new(#13795b, 0), "Alcista")
 c_dn    = input.color(color.new(#b3261e, 0), "Bajista")
 c_off   = input.color(color.new(#9aa3b2, 60), "Sin rango")
 
-// ---- Rangos pendientes de la temporalidad en la que se evalúa (se calcula solo en la última vela) ----
-// Devuelve los 2 rangos pendientes más recientes: dirección (1 alcista, -1 bajista, 0 ninguno), objetivo, máximo y mínimo de la vela 1,
-// hora de la vela 1 y si la vela 2 es la vela actual (rango en formación).
-crt(int n) =>
+// Se ejecuta dentro de cada temporalidad. Solo usa velas cerradas ([1] y anteriores) para los rangos confirmados,
+// así el resultado no cambia entre el historial y el tiempo real.
+crt(int n, int startMs) =>
     int   d1 = 0
     float g1 = na
-    float a1 = na
-    float b1 = na
     int   s1 = na
-    bool  f1 = false
     int   d2 = 0
     float g2 = na
-    float a2 = na
-    float b2 = na
     int   s2 = na
-    bool  f2 = false
-    if barstate.islast
+    int   fd = 0
+    float fg = na
+    int   fs = na
+    if time >= startMs
         int best1 = 100000
-        int best2 = 100000
         int bi1 = 100000
+        int best2 = 100000
         int bi2 = 100000
-        for i = 1 to n
+        for i = 2 to n + 1
             if na(high[i])
                 break
             float h1 = high[i]
             float l1 = low[i]
             int j = -1
-            for k = i - 1 to 0
-                bool ins = close[k] < h1 and close[k] > l1
-                if not ins
+            for k = i - 1 to 1
+                if not (close[k] < h1 and close[k] > l1)
                     break
                 if high[k] > h1 or low[k] < l1
                     j := k
                     break
-            if j >= 0
+            if j >= 1
                 bool sh = high[j] > h1
                 bool sl = low[j] < l1
                 if not (sh and sl)
                     int   dir = sh ? -1 : 1
                     float tgt = sh ? l1 : h1
                     bool alive = true
-                    if j > 0
-                        for m = j - 1 to 0
+                    if j > 1
+                        for m = j - 1 to 1
                             if (dir == 1 and high[m] > tgt) or (dir == -1 and low[m] < tgt)
                                 alive := false
                                 break
@@ -66,37 +65,47 @@ crt(int n) =>
                                 alive := false
                                 break
                     if alive
-                        bool forming = j == 0 and time_close > timenow
-                        // el más reciente primero: vela 2 más nueva y, a igualdad, vela 1 más nueva
                         if j < best1 or (j == best1 and i < bi1)
                             best2 := best1
                             bi2 := bi1
                             d2 := d1
                             g2 := g1
-                            a2 := a1
-                            b2 := b1
                             s2 := s1
-                            f2 := f1
                             best1 := j
                             bi1 := i
                             d1 := dir
                             g1 := tgt
-                            a1 := h1
-                            b1 := l1
                             s1 := time[i]
-                            f1 := forming
                         else if j < best2 or (j == best2 and i < bi2)
                             best2 := j
                             bi2 := i
                             d2 := dir
                             g2 := tgt
-                            a2 := h1
-                            b2 := l1
                             s2 := time[i]
-                            f2 := forming
-    [d1, g1, a1, b1, s1, f1, d2, g2, a2, b2, s2, f2]
+    // Rango en formación: la vela actual (aún abierta) es la vela 2. Solo se usa en la última vela del gráfico.
+    if barstate.islast
+        for i = 1 to n
+            if na(high[i])
+                break
+            float h1 = high[i]
+            float l1 = low[i]
+            bool ok = true
+            if i > 1
+                for k = i - 1 to 1
+                    if not (close[k] < h1 and close[k] > l1) or high[k] > h1 or low[k] < l1
+                        ok := false
+                        break
+            if ok
+                bool sh = high > h1
+                bool sl = low < l1
+                if close < h1 and close > l1 and sh != sl
+                    fd := sh ? -1 : 1
+                    fg := sh ? l1 : h1
+                    fs := time[i]
+                    break
+    [d1, g1, s1, d2, g2, s2, fd, fg, fs]
 
-// Nombre corto de la temporalidad: 5m (minutos), 4H, 1D, 1W, 3M (meses)…
+// Nombre corto: 5m (minutos), 4H, 1D, 1W, 3M (meses)…
 tfName(string tf) =>
     string t = str.upper(tf)
     string out = t
@@ -108,112 +117,168 @@ tfName(string tf) =>
     out
 
 var array<string> tfs = str.split(str.replace_all(i_tfs, " ", ""), ",")
+var int nTF = array.size(tfs)
+var array<string> names = array.new<string>()
+if barstate.isfirst
+    for tf in tfs
+        array.push(names, tfName(tf))
 
-// Resultados por temporalidad (solo se rellenan en la última vela del gráfico)
-var array<string> rName = array.new<string>()
-var array<int>    rDir  = array.new<int>()
-var array<float>  rTgt  = array.new<float>()
-var array<bool>   rForm = array.new<bool>()
-var array<int>    rT1   = array.new<int>()
-var array<bool>   rSkip = array.new<bool>()
-// Segundo rango pendiente (otra dirección u otro objetivo en la misma temporalidad)
-var array<int>    rDir2 = array.new<int>()
-var array<float>  rTgt2 = array.new<float>()
-var array<int>    rT12  = array.new<int>()
-
+int startMs = timenow - i_days * 86400000
 int chartSec = timeframe.in_seconds()
-if barstate.islast
-    array.clear(rName)
-    array.clear(rDir)
-    array.clear(rTgt)
-    array.clear(rForm)
-    array.clear(rT1)
-    array.clear(rSkip)
-    array.clear(rDir2)
-    array.clear(rTgt2)
-    array.clear(rT12)
-for tf in tfs
-    [d1, g1, a1, b1, s1, f1, d2, g2, a2, b2, s2, f2] = request.security(syminfo.tickerid, tf, crt(i_n), lookahead = barmerge.lookahead_off)
-    if barstate.islast
-        bool skip = timeframe.in_seconds(tf) < chartSec
-        array.push(rName, tfName(tf))
-        array.push(rSkip, skip)
-        array.push(rDir, skip ? 0 : d1)
-        array.push(rTgt, skip ? na : g1)
-        array.push(rForm, skip ? false : f1)
-        array.push(rT1, skip ? na : s1)
-        array.push(rDir2, skip ? 0 : d2)
-        array.push(rTgt2, skip ? na : g2)
-        array.push(rT12, skip ? na : s2)
 
-// ---- Líneas: una por objetivo; si varias temporalidades comparten objetivo (mismo precio y dirección), una sola línea con todas ----
-var array<line>  drawnL = array.new<line>()
-var array<label> drawnB = array.new<label>()
-if barstate.islast
-    for ln in drawnL
-        line.delete(ln)
-    for lb in drawnB
-        label.delete(lb)
-    array.clear(drawnL)
-    array.clear(drawnB)
-    if i_lines
-        array<float>  gP = array.new<float>()
-        array<int>    gD = array.new<int>()
-        array<string> gN = array.new<string>()
-        array<int>    gT = array.new<int>()
-        int nT = array.size(rName)
-        for idx = 0 to nT - 1
-            for which = 1 to 2
-                int   d = which == 1 ? array.get(rDir, idx) : array.get(rDir2, idx)
-                float p = which == 1 ? array.get(rTgt, idx) : array.get(rTgt2, idx)
-                int   t1 = which == 1 ? array.get(rT1, idx) : array.get(rT12, idx)
-                if d != 0 and not na(p)
-                    string nm = array.get(rName, idx) + ((which == 1 and array.get(rForm, idx)) ? "*" : "")
-                    int found = -1
-                    int gs = array.size(gP)
-                    if gs > 0
-                        for g = 0 to gs - 1
-                            if array.get(gD, g) == d and math.abs(array.get(gP, g) - p) < syminfo.mintick / 2
-                                found := g
-                                break
-                    if found < 0
-                        array.push(gP, p)
-                        array.push(gD, d)
-                        array.push(gN, nm)
-                        array.push(gT, t1)
-                    else
-                        array.set(gN, found, array.get(gN, found) + "-" + nm)
-                        array.set(gT, found, math.min(array.get(gT, found), t1))
-        int ng = array.size(gP)
-        if ng > 0
-            for g = 0 to ng - 1
-                float p = array.get(gP, g)
-                int   d = array.get(gD, g)
-                color c = d == 1 ? c_up : c_dn
-                line ln = line.new(array.get(gT, g), p, time, p, xloc = xloc.bar_time, extend = extend.right, color = c, width = 2)
-                array.push(drawnL, ln)
-                string txt = "CRT " + (d == 1 ? "↑ " : "↓ ") + array.get(gN, g) + " · " + str.tostring(p, format.mintick)
+// Por temporalidad: 2 huecos (los 2 rangos pendientes más recientes) + el rango en formación
+array<int>   cD = array.new<int>(2 * nTF, 0)
+array<float> cG = array.new<float>(2 * nTF, na)
+array<int>   cS = array.new<int>(2 * nTF, na)
+array<int>   fD = array.new<int>(nTF, 0)
+array<float> fG = array.new<float>(nTF, na)
+array<int>   fS = array.new<int>(nTF, na)
+array<bool>  sk = array.new<bool>(nTF, false)
+
+for [idx, tf] in tfs
+    [d1, g1, s1, d2, g2, s2, fd, fg, fs] = request.security(syminfo.tickerid, tf, crt(i_n, startMs), lookahead = barmerge.lookahead_on)
+    bool skip = timeframe.in_seconds(tf) < chartSec
+    array.set(sk, idx, skip)
+    if not skip
+        array.set(cD, idx, d1)
+        array.set(cG, idx, g1)
+        array.set(cS, idx, s1)
+        array.set(cD, nTF + idx, d2)
+        array.set(cG, nTF + idx, g2)
+        array.set(cS, nTF + idx, s2)
+        array.set(fD, idx, fd)
+        array.set(fG, idx, fg)
+        array.set(fS, idx, fs)
+
+// Objetivo alcanzado dentro de la vela abierta de esa temporalidad: se comprueba con cada vela del gráfico
+var array<bool>  hit    = array.new<bool>(2 * nTF, false)
+var array<float> hitKey = array.new<float>(2 * nTF, na)
+var array<int>   hitDir = array.new<int>(2 * nTF, 0)
+for s = 0 to 2 * nTF - 1
+    int   d = array.get(cD, s)
+    float g = array.get(cG, s)
+    if d == 0 or na(g)
+        array.set(hit, s, false)
+        array.set(hitKey, s, na)
+        array.set(hitDir, s, 0)
+    else
+        if na(array.get(hitKey, s)) or array.get(hitKey, s) != g or array.get(hitDir, s) != d
+            array.set(hit, s, false)
+            array.set(hitKey, s, g)
+            array.set(hitDir, s, d)
+        if (d == 1 and high > g) or (d == -1 and low < g)
+            array.set(hit, s, true)
+
+activo(int s) =>
+    array.get(cD, s) != 0 and not na(array.get(cG, s)) and not array.get(hit, s)
+
+// ---- Líneas: una por objetivo; si varias temporalidades comparten objetivo y dirección, una sola línea con todas ----
+var array<string> oKey = array.new<string>()
+var array<line>   oLn  = array.new<line>()
+var array<label>  oLb  = array.new<label>()
+if i_lines and time >= startMs
+    array<string> gK = array.new<string>()
+    array<string> gN = array.new<string>()
+    array<int>    gT = array.new<int>()
+    array<int>    gD = array.new<int>()
+    array<float>  gP = array.new<float>()
+    for idx = 0 to nTF - 1
+        for w = 0 to 2
+            int d = 0
+            float p = na
+            int t1 = na
+            string nm = array.get(names, idx)
+            if w < 2
+                int s = w * nTF + idx
+                if activo(s)
+                    d := array.get(cD, s)
+                    p := array.get(cG, s)
+                    t1 := array.get(cS, s)
+            else if barstate.islast and not array.get(sk, idx)
+                d := array.get(fD, idx)
+                p := array.get(fG, idx)
+                t1 := array.get(fS, idx)
+                nm := nm + "*"
+            if d != 0 and not na(p)
+                p := math.round_to_mintick(p)
+                string k = str.tostring(d) + "|" + str.tostring(p)
+                int f = array.indexof(gK, k)
+                if f < 0
+                    array.push(gK, k)
+                    array.push(gN, nm)
+                    array.push(gT, t1)
+                    array.push(gD, d)
+                    array.push(gP, p)
+                else if not str.contains("-" + array.get(gN, f) + "-", "-" + nm + "-")
+                    array.set(gN, f, array.get(gN, f) + "-" + nm)
+                    array.set(gT, f, math.min(array.get(gT, f), t1))
+    // cerrar los objetivos que ya no están (alcanzados o rotos)
+    int no = array.size(oKey)
+    if no > 0
+        for q = no - 1 to 0
+            if array.indexof(gK, array.get(oKey, q)) < 0
+                if not i_hist
+                    line.delete(array.get(oLn, q))
+                    label.delete(array.get(oLb, q))
+                array.remove(oKey, q)
+                array.remove(oLn, q)
+                array.remove(oLb, q)
+    // crear o alargar los activos
+    int ng = array.size(gK)
+    if ng > 0
+        for q = 0 to ng - 1
+            float p = array.get(gP, q)
+            int   d = array.get(gD, q)
+            color c = d == 1 ? c_up : c_dn
+            string txt = "CRT " + (d == 1 ? "↑ " : "↓ ") + array.get(gN, q) + " · " + str.tostring(p, format.mintick)
+            int f = array.indexof(oKey, array.get(gK, q))
+            if f < 0
+                line ln = line.new(array.get(gT, q), p, time, p, xloc = xloc.bar_time, color = c, width = 2)
                 label lb = label.new(time, p, txt, xloc = xloc.bar_time, style = d == 1 ? label.style_label_lower_left : label.style_label_upper_left, color = color.new(c, 15), textcolor = color.white, size = size.small)
-                array.push(drawnB, lb)
+                array.push(oKey, array.get(gK, q))
+                array.push(oLn, ln)
+                array.push(oLb, lb)
+            else
+                line.set_x2(array.get(oLn, f), time)
+                line.set_x1(array.get(oLn, f), math.min(line.get_x1(array.get(oLn, f)), array.get(gT, q)))
+                label.set_x(array.get(oLb, f), time)
+                label.set_text(array.get(oLb, f), txt)
 
-// ---- Tabla: todas las temporalidades; verde ↑ / rojo ↓ en rango, gris sin rango ----
+// ---- Tabla (vela actual): verde ↑ / rojo ↓ con rango pendiente, gris sin rango, * = vela 2 aún abierta ----
 pos = i_pos == "Arriba a la izquierda" ? position.top_left : i_pos == "Abajo a la derecha" ? position.bottom_right : i_pos == "Abajo a la izquierda" ? position.bottom_left : position.top_right
 var table tb = na
 if barstate.islast and i_table
-    int nT = array.size(rName)
-    int rows = int(math.ceil(nT / i_cols)) + 1
+    int rows = int(math.ceil(nTF / i_cols)) + 1
     if not na(tb)
         table.delete(tb)
     tb := table.new(pos, i_cols, rows, border_width = 1, border_color = color.new(color.gray, 70))
     table.cell(tb, 0, 0, "Rangos CRT (* = en formación)", text_color = chart.fg_color, text_size = size.small)
     table.merge_cells(tb, 0, 0, i_cols - 1, 0)
-    for idx = 0 to nT - 1
+    for idx = 0 to nTF - 1
         int col = idx % i_cols
         int row = int(idx / i_cols) + 1
-        int d = array.get(rDir, idx)
-        int dd = array.get(rDir2, idx)
-        bool skip = array.get(rSkip, idx)
-        string arrow = d == 1 ? (dd == -1 ? " ↑↓" : " ↑") : d == -1 ? (dd == 1 ? " ↓↑" : " ↓") : ""
-        string txt = array.get(rName, idx) + arrow + (array.get(rForm, idx) ? "*" : "")
+        bool skip = array.get(sk, idx)
+        int d = activo(idx) ? array.get(cD, idx) : 0
+        int dd = activo(nTF + idx) ? array.get(cD, nTF + idx) : 0
+        if d == 0
+            d := dd
+            dd := 0
+        int fdir = array.get(fD, idx)
+        bool form = fdir != 0
+        if d == 0 and form
+            d := fdir
+        string arrow = d == 1 ? " ↑" : d == -1 ? " ↓" : ""
+        if dd != 0 and dd != d
+            arrow := arrow + (dd == 1 ? "↑" : "↓")
+        if form and fdir != d and d != 0
+            arrow := arrow + (fdir == 1 ? "↑" : "↓")
+        string txt = array.get(names, idx) + arrow + (form ? "*" : "")
         color bg = skip ? color.new(color.gray, 90) : d == 1 ? c_up : d == -1 ? c_dn : c_off
-        table.cell(tb, col, row, skip ? array.get(rName, idx) + " ·" : txt, bgcolor = bg, text_color = (d != 0 and not skip) ? color.white : chart.fg_color, text_size = size.small, tooltip = skip ? "Temporalidad menor que la del gráfico: baja el gráfico (p. ej. a 5M) para verla" : d != 0 ? "Objetivo " + str.tostring(array.get(rTgt, idx), format.mintick) : "Sin rango pendiente")
+        string tip = "Sin rango pendiente"
+        if activo(idx)
+            tip := "Objetivo " + str.tostring(array.get(cG, idx), format.mintick)
+        if activo(nTF + idx)
+            tip := tip + " / " + str.tostring(array.get(cG, nTF + idx), format.mintick)
+        if form
+            tip := tip + " · en formación: " + str.tostring(array.get(fG, idx), format.mintick)
+        table.cell(tb, col, row, skip ? array.get(names, idx) + " ·" : txt, bgcolor = bg, text_color = (d != 0 and not skip) ? color.white : chart.fg_color, text_size = size.small, tooltip = skip ? "Temporalidad menor que la del gráfico: baja el gráfico (p. ej. a 5m) para verla" : tip)
