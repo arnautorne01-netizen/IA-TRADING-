@@ -2477,7 +2477,7 @@ function candleEnd(tf, c, anchor) {
   if (tf === "M") { const [y, m] = c.k.split("-").map(Number); return clockToUtc(lastBizDay(y, m - 1), 24, anchor); }
   const [y, q] = c.k.split("Q").map(Number); return clockToUtc(lastBizDay(y, q * 3 + 2), 24, anchor);
 }
-function rangeOf(s, closed, tf, dec, pip, anchor) {
+function rangeOf(s, closed, tf, dec, pip, anchor, tol = 0) {
   const n = s.length, f = v => v.toFixed(dec); if (n < 2) return null;
   const px = s[n - 1].c, dist = v => Math.round(Math.abs(v - px) / pip);
   const ref = closed ? s[n - 1] : s[n - 2], cur = closed ? null : s[n - 1];
@@ -2499,34 +2499,47 @@ function rangeOf(s, closed, tf, dec, pip, anchor) {
   // (aunque haya velas interiores en medio). La primera vela que SUPERA el máximo o el mínimo de la vela 1 y CIERRA DENTRO
   // forma el rango (vela 2). Si antes una vela cierra fuera, ese rango ya no vale. Después, el rango sigue vivo mientras se
   // cierre dentro, se cumple al superar el lado opuesto y se rompe si una vela cierra fuera.
-  const list = [], lastC = closed ? n - 1 : n - 2, seen = new Set();
-  for (let i = lastC - 1; i >= Math.max(0, lastC - 40) && list.length < 8; i--) {
-    const c1 = s[i]; let j = -1;
+  const list = [], lastC = closed ? n - 1 : n - 2, seen = new Set(), T = tol || 0;
+  const fm = v => f(v), dif = v => tol >= 1 ? `${(+v).toFixed(2)} ptos` : `${(Math.abs(v) / pip).toFixed(1)} pips`;
+  // Evalúa el rango vela 1 = s[i], vela 2 = s[j]: estado (pendiente / alcanzado / roto / ambos) y datos para comprobarlo
+  const evalRange = (i, j, limite) => {
+    const c1 = s[i], c2 = s[j];
+    const sh = c2.h > c1.h, sl = c2.l < c1.l, ago = lastC - j;
+    const base = {rango: `${fm(c1.h)} – ${fm(c1.l)}`, t: c2.t, t1: c1.t, gap: j - i - 1, ago, limite,
+      v1: `máx ${fm(c1.h)} · mín ${fm(c1.l)}`, v2: `máx ${fm(c2.h)} · mín ${fm(c2.l)} · cierre ${fm(c2.c)}`};
+    if (sh && sl) return {...base, dir: "Ambos", cls: "warn", st: "ambos", stText: `superó el máximo (${fm(c2.h)}) y el mínimo (${fm(c2.l)}) y cerró dentro`};
+    // dirección: la del extremo superado (o, si es «al límite» sin superarlo, el que más se acercó)
+    const bear = sh ? true : sl ? false : (c2.h - c1.h) >= (c1.l - c2.l);
+    const target = bear ? c1.l : c1.h, edge = bear ? c1.h : c1.l;
+    let st = "pendiente", when = null, rebarridos = 0;
+    for (const b of s.slice(j + 1)) {
+      if (bear ? b.l < target : b.h > target) { st = "alcanzado"; when = b.t; break; } // hay que superarlo, tocarlo no basta
+      if (b.c > c1.h || b.c < c1.l) { st = "roto"; when = b.t; break; }
+      if (bear ? b.h > edge : b.l < edge) rebarridos++;
+    }
+    return {...base, dir: bear ? "Bajista" : "Alcista", cls: bear ? "down" : "up", st, when, rebarridos, target: fm(target), tdist: dist(target), inval: fm(edge), sweep: fm(bear ? c2.h : c2.l)};
+  };
+  // Regla del trader: una vela marca el rango (vela 1). Mientras las velas siguientes CIERREN DENTRO, ese rango sigue vigente
+  // (aunque haya velas interiores en medio). La primera vela que SUPERA el máximo o el mínimo de la vela 1 y CIERRA DENTRO
+  // forma el rango (vela 2). Si antes una vela cierra fuera, ese rango ya no vale.
+  // «Al límite»: casos en los que una diferencia de datos menor que T (lo que pueden diferir estas velas de las de TradingView)
+  // cambiaría la respuesta. Se enseñan marcados para comprobarlos en el gráfico: así no se escapa ningún rango.
+  for (let i = lastC - 1; i >= Math.max(0, lastC - 40) && list.length < 10; i--) {
+    const c1 = s[i];
     for (let k = i + 1; k <= lastC; k++) {
-      const c = s[k], hi = c.h > c1.h, lo = c.l < c1.l, inside = c.c < c1.h && c.c > c1.l;
-      if (!inside) break;                 // cerró fuera antes de barrer: no hay rango
-      if (hi || lo) { j = k; break; }     // primera vela que supera un extremo y cierra dentro
+      const c = s[k], up = c.h - c1.h, dn = c1.l - c.l, mIn = Math.min(c1.h - c.c, c.c - c1.l); // >0 = superó / cerró dentro
+      const swept = up > 0 || dn > 0, inside = mIn > 0, key = i + "|" + k;
+      const why = [];
+      if (swept && Math.max(up, dn) <= T) why.push(`superó el extremo solo por ${dif(Math.max(up, dn))}`);
+      if (!swept && Math.max(up, dn) > -T && T > 0) why.push(`se quedó a ${dif(-Math.max(up, dn))} del extremo sin superarlo`);
+      if (Math.abs(mIn) <= T && T > 0) why.push(inside ? `cerró dentro por solo ${dif(mIn)}` : mIn === 0 ? `cerró justo en el extremo` : `cerró fuera por solo ${dif(-mIn)}`);
+      if (swept && inside) { if (!seen.has(key)) { seen.add(key); const r = evalRange(i, k, why.length ? why.join(" y ") : null); if (r.ago < 5 || r.st === "pendiente") list.push(r); } break; }
+      if (why.length && (swept || inside) && !seen.has(key)) { seen.add(key); const r = evalRange(i, k, why.join(" y ")); r.posible = true; if (r.ago < 5 || r.st === "pendiente") list.push(r); }
+      if (!inside) break;                 // cerró fuera antes de barrer: el rango de esa vela ya no vale
     }
-    if (j < 0 || seen.has(j + "|" + i)) continue;
-    seen.add(j + "|" + i);
-    const c2 = s[j], hi = c2.h > c1.h, lo = c2.l < c1.l, ago = lastC - j;
-    const base = {rango: `${f(c1.h)} – ${f(c1.l)}`, t: c2.t, t1: c1.t, gap: j - i - 1, ago};
-    let r;
-    if (hi && lo) r = {...base, dir: "Ambos", cls: "warn", st: "ambos", stText: `superó el máximo (${f(c2.h)}) y el mínimo (${f(c2.l)}) y cerró dentro`};
-    else {
-      const bear = hi, target = bear ? c1.l : c1.h, edge = bear ? c1.h : c1.l;
-      let st = "pendiente", when = null, rebarridos = 0;
-      for (const b of s.slice(j + 1)) {
-        if (bear ? b.l < target : b.h > target) { st = "alcanzado"; when = b.t; break; } // hay que superarlo, tocarlo no basta
-        if (b.c > c1.h || b.c < c1.l) { st = "roto"; when = b.t; break; }
-        if (bear ? b.h > edge : b.l < edge) rebarridos++;
-      }
-      r = {...base, dir: bear ? "Bajista" : "Alcista", cls: bear ? "down" : "up", st, when, rebarridos, target: f(target), tdist: dist(target), inval: f(edge), sweep: f(bear ? c2.h : c2.l)};
-    }
-    if (ago < 5 || r.st === "pendiente") list.push(r);
   }
   list.sort((a, b) => b.t - a.t || b.t1 - a.t1);
-  const pend = list.filter(x => x.st === "pendiente");
+  const pend = list.filter(x => x.st === "pendiente").sort((a, b) => (!!a.posible) - (!!b.posible) || (!!a.limite) - (!!b.limite));
   return {ref: {h: f(ref.h), l: f(ref.l), t: ref.t, size: Math.round((ref.h - ref.l) / pip)}, now, pend, list, nextOpen: closed};
 }
 function mtfAnalysis(pair) {
@@ -2536,7 +2549,7 @@ function mtfAnalysis(pair) {
   const ms = marketState(h1, anchor), mins = Object.fromEntries(["m5", "m15", "m30"].map(k => [k, cleanH1(m[k] || [], anchor)]));
   const out = MTF.map(([name, tf]) => {
     const s = seriesFor(tf, h1, d1, anchor, mins), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
-    return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor)};
+    return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor, INS(pair).grupo === "fut" ? 1 : pair === "DXY" ? 0.01 : 0.6 * pip)};
   });
   out.forEach(r => { const g = r.rg; r.enRango = !!(g && (g.pend.length || g.now?.k === "formacion")); });
   out.market = ms; return out;
@@ -2563,7 +2576,7 @@ function renderMTF() {
     + (MS.weekend ? `<div class="small">Mercado cerrado: las velas de hasta 1 semana ya están cerradas; los rangos se miden con el cierre del viernes.</div>` : "")
     + (MS.stale || MS.weekendNoClose ? `<div class="banner" style="margin-top:6px">Faltan velas: los datos no llegan hasta ahora${MS.weekendNoClose ? " (ni hasta el cierre del viernes)" : ""}, así que los rangos de las temporalidades bajas pueden estar mal. Se actualizan con la tarea diaria; también puedes subir tu CSV de TradingView abajo.</div>` : "");
   const bull = a.filter(r => r.st.label === "Alcista").length, bear = a.filter(r => r.st.label === "Bajista").length;
-  const inrOf = r => { const g = r.rg; if (!g) return null; const x = g.now?.k === "formacion" ? g.now : g.pend[0]; if (!x) return null; const dir = x.dir || "Ambos"; return {x, dir, cls: dir === "Alcista" ? "up" : dir === "Bajista" ? "down" : "amb", arrow: dir === "Alcista" ? "↑" : dir === "Bajista" ? "↓" : "↕", forming: g.now?.k === "formacion"}; };
+  const inrOf = r => { const g = r.rg; if (!g) return null; const x = g.now?.k === "formacion" ? g.now : g.pend[0]; if (!x) return null; const dir = x.dir || "Ambos"; return {x, dir, cls: dir === "Alcista" ? "up" : dir === "Bajista" ? "down" : "amb", arrow: (dir === "Alcista" ? "↑" : dir === "Bajista" ? "↓" : "↕") + (x.limite ? " ⚠" : ""), forming: g.now?.k === "formacion"}; };
   $("#mtf-strip").innerHTML = a.map(r => { const I = r.enRango && inrOf(r); return I ? `<span class="inr-badge ${I.cls}" title="En rango ${I.dir.toLowerCase()}${I.x.target ? " · objetivo " + I.x.target : ""}">${I.arrow} ${esc(r.name)}</span>` : `<span class="tfchip" title="Sin rango · estructura ${esc(r.st.label.toLowerCase())}">${esc(r.name)}</span>`; }).join(" ");
   { const inr = a.filter(r => r.enRango), up = inr.filter(r => inrOf(r)?.dir === "Alcista"), dn = inr.filter(r => inrOf(r)?.dir === "Bajista"), am = inr.filter(r => !["Alcista", "Bajista"].includes(inrOf(r)?.dir));
     const chip = r => { const I = inrOf(r); return `<span class="inr-badge ${I.cls}">${I.arrow} ${esc(r.name)}${I.x.target ? " · obj. " + esc(I.x.target) : ""}${I.forming ? " · en formación" : ""}</span>`; };
@@ -2590,7 +2603,7 @@ function renderMTF() {
     {h: "Cierra", html: 1, f: r => r.rg?.now ? `<span class="small">${esc(left(r.rg.now.closeAt))}</span><div class="small muted">${esc(dt(r.rg.now.closeAt, true))}</div>` : `<span class="small muted">—</span>`},
     {h: "Rangos según tu regla", html: 1, f: r => { const L = r.rg?.list || []; if (!L.length) return `<span class="muted small">Ninguno en las últimas 5 velas</span>`;
       const ST = {pendiente: ["En rango · pendiente", "up"], alcanzado: ["Objetivo alcanzado", ""], roto: ["Roto: cerró fuera", "down"], ambos: ["Superó los dos lados", "warn"]};
-      return L.map(x => { const S = ST[x.st] || [x.st, ""]; return `<div class="small" style="margin-bottom:4px"><span class="pill ${x.cls}">${x.dir === "Alcista" ? "↑" : x.dir === "Bajista" ? "↓" : "↕"}</span> <span class="pill ${S[1]}">${esc(S[0])}</span> rango <span class="num">${esc(x.rango)}</span>${x.target ? ` · objetivo <b class="num">${esc(x.target)}</b>${x.st === "pendiente" ? ` (${x.tdist} ${u})` : ""} · barrió hasta <span class="num">${esc(x.sweep)}</span>${x.rebarridos ? ` · ${x.rebarridos} ${x.rebarridos === 1 ? "vela más ha barrido" : "velas más han barrido"} y cerrado dentro` : ""}${x.st === "pendiente" ? ` · se rompe si una vela cierra fuera` : ""}` : ` · ${esc(x.stText)}`} <span class="muted">· vela 1: ${esc(typeof r.tf === "number" && r.tf < 24 || isMin(r.tf) ? dt(x.t1 * 1000, true) : dayOf(x.t1 * 1000, r.tf))} · vela 2: ${esc(typeof r.tf === "number" && r.tf < 24 || isMin(r.tf) ? dt(x.t * 1000, true) : dayOf(x.t * 1000, r.tf))}${x.gap ? ` (${x.gap} ${x.gap === 1 ? "vela" : "velas"} dentro entre medias)` : ""}${x.when ? ` · ${x.st === "alcanzado" ? "llegó" : "cerró fuera"} el ${esc(dt(x.when * 1000, true))}` : ""}</span></div>`; }).join(""); }},
+      return L.map(x => { const S = ST[x.st] || [x.st, ""]; return `<div class="small" style="margin-bottom:4px"><span class="pill ${x.cls}">${x.dir === "Alcista" ? "↑" : x.dir === "Bajista" ? "↓" : "↕"}</span> <span class="pill ${S[1]}">${esc(S[0])}</span>${x.posible ? ` <span class="pill warn" title="Con estas velas no cumple la regla por muy poco; en tu gráfico podría cumplirla">⚠ posible rango</span>` : x.limite ? ` <span class="pill warn" title="Cumple la regla por muy poco; compruébalo en tu gráfico">⚠ al límite</span>` : ""} rango <span class="num">${esc(x.rango)}</span>${x.target ? ` · objetivo <b class="num">${esc(x.target)}</b>${x.st === "pendiente" ? ` (${x.tdist} ${u})` : ""} · barrió hasta <span class="num">${esc(x.sweep)}</span>${x.rebarridos ? ` · ${x.rebarridos} ${x.rebarridos === 1 ? "vela más ha barrido" : "velas más han barrido"} y cerrado dentro` : ""}${x.st === "pendiente" ? ` · se rompe si una vela cierra fuera` : ""}` : ` · ${esc(x.stText)}`} <span class="muted">· vela 1: ${esc(typeof r.tf === "number" && r.tf < 24 || isMin(r.tf) ? dt(x.t1 * 1000, true) : dayOf(x.t1 * 1000, r.tf))} · vela 2: ${esc(typeof r.tf === "number" && r.tf < 24 || isMin(r.tf) ? dt(x.t * 1000, true) : dayOf(x.t * 1000, r.tf))}${x.gap ? ` (${x.gap} ${x.gap === 1 ? "vela" : "velas"} dentro entre medias)` : ""}${x.when ? ` · ${x.st === "alcanzado" ? "llegó" : "cerró fuera"} el ${esc(dt(x.when * 1000, true))}` : ""}</span>${x.limite ? `<div class="small" style="color:#b7791f">⚠ ${esc(x.limite)}: compruébalo en tu gráfico.</div>` : ""}<div class="small muted num">vela 1: ${esc(x.v1)} · vela 2: ${esc(x.v2)}</div></div>`; }).join(""); }},
   ], a);
 }
 // --- datos de velas: CSV de TradingView o los que guarda la tarea diaria
