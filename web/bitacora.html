@@ -326,8 +326,14 @@ details summary{cursor:pointer;font-weight:600}
         <div class="tablebox"><table id="mtf-table"></table></div>
         <p class="small muted" style="margin:0"><b>Tu regla:</b> la vela 2 supera el máximo o el mínimo de la vela 1 y cierra dentro de su rango (si cierra justo en el extremo, no cuenta). Puede haber velas que se quedan dentro entre la vela 1 y la vela 2: el rango de la vela 1 sigue vigente mientras se cierre dentro. <b>Rango</b> = máximo y mínimo de la última vela cerrada de cada temporalidad. <b>Rango en formación</b> = la vela actual ha barrido un lado de ese rango y está de vuelta dentro: si cierra dentro, el objetivo es el lado opuesto; si supera su propio extremo, se invalida. <b>Rangos según tu regla</b> = todas las velas que superaron el máximo o el mínimo de la vela anterior y cerraron dentro, en las últimas 5 velas cerradas (y más atrás, hasta 40 velas, las que siguen pendientes). Cada una dice si sigue <b>en rango</b> (pendiente de llegar al otro lado), si ya alcanzó el objetivo o si se <b>rompió</b>: el rango solo se rompe cuando una vela cierra fuera; si las velas siguientes vuelven a barrer y cierran dentro, sigue vivo.</p>
       </div>
-      <details><summary class="small">Subir velas desde TradingView</summary>
-        <p class="small" style="margin:6px 0">En TradingView abre el gráfico del par en <b>1 hora</b>, carga todo el historial que puedas (cuanto más, mejor: un año da para 1 mes y 3 meses) y usa «Exportar datos del gráfico». Sube aquí el archivo con el par correcto elegido arriba. Opcional: sube también el gráfico <b>diario</b> para tener más historia en 1 mes y 3 meses.</p>
+      <details open><summary class="small"><b>📥 Subir tus velas de TradingView</b> (para que los rangos salgan exactamente como en tu gráfico)</summary>
+        <ol class="small" style="margin:6px 0;padding-left:18px">
+          <li>En TradingView abre el gráfico (el mismo símbolo que operas, p. ej. FOREXCOM:EURUSD o MNQ) en la temporalidad que quieras.</li>
+          <li>Desplázate hacia la izquierda para cargar historia (no hace falta mucha: unas semanas en temporalidades bajas, meses en las altas).</li>
+          <li>Menú de la flecha (arriba a la derecha, junto al nombre del gráfico) → <b>«Exportar datos del gráfico…»</b> → formato de hora <b>UNIX</b> → Exportar.</li>
+          <li>Sube aquí el archivo <b>sin cambiarle el nombre</b>: la bitácora reconoce el instrumento y la temporalidad (p. ej. «FOREXCOM_EURUSD, 120.csv» = EURUSD en 2H). Puedes subir varios a la vez.</li>
+        </ol>
+        <p class="small muted" style="margin:0 0 6px">Lo mínimo para que todo cuadre: <b>5, 15, 30 y 60 minutos y diario</b> de cada instrumento; con eso se montan las demás temporalidades. Si además subes una temporalidad concreta (2H, 4H…), se usan tus velas tal cual. Las velas más nuevas que tu exportación se completan solas con la descarga de cada hora.</p>
         <input type="file" id="mtf-file" accept=".csv,text/csv" multiple>
         <div id="mtf-msg" class="small"></div>
       </details>
@@ -1058,8 +1064,9 @@ async function boot() {
   }, e => banner("No se pudo leer tu journal: " + e.message));
   db.collection("market").onSnapshot(snap => {
     for (const d of snap.docs) {
-      const [pair, kind] = d.id.split("_"); if (!pair || !kind) continue;
-      const data = d.data();
+      const parts = d.id.split("_"), data = d.data();
+      if (parts[1] === "tv" && parts[2]) { const pv = state.market[parts[0]] || {}; state.market[parts[0]] = {...pv, tv: {...(pv.tv || {}), [parts[2]]: unpackBars(data)}, tvInfo: {...(pv.tvInfo || {}), [parts[2]]: {updated: data.updated, symbol: data.symbol || ""}}}; continue; }
+      const [pair, kind] = parts; if (!pair || !kind) continue;
       const prev = state.market[pair] || {}, sources = {...(prev.sources || {}), [kind]: data.source || ""};
       state.market[pair] = {...prev, [kind]: unpackBars(data), sources, source: sources.h1 || data.source || prev.source};
     }
@@ -2467,6 +2474,7 @@ const addDaysISO = (day, n) => new Date(Date.parse(day + "T00:00:00Z") + n * 864
 function lastBizDay(y, m) { let d = new Date(Date.UTC(y, m + 1, 0)); while (d.getUTCDay() % 6 === 0) d = new Date(d - 864e5); return d.toISOString().slice(0, 10); }
 // Cuándo cierra una vela (ms UTC)
 function candleEnd(tf, c, anchor) {
+  if (c.end) return c.end;
   if (isMin(tf)) { const [day, b] = String(c.k).split("|"); return clockToUtc(day, (+b + 1) * +tf.slice(1) / 60, anchor); }
   if (typeof tf === "number") { const [day, b] = String(c.k).split("|"); const endH = tf >= 24 ? 24 : Math.min(24, (+b + 1) * tf); return clockToUtc(day, endH, anchor); }
   if (tf[0] === "D") { const n = +tf.slice(1), idx = (+c.k + 1) * n - 1, day = addDaysISO("2000-01-03", Math.floor(idx / 5) * 7 + idx % 5); return clockToUtc(day, 24, anchor); }
@@ -2542,14 +2550,33 @@ function rangeOf(s, closed, tf, dec, pip, anchor, tol = 0) {
   const pend = list.filter(x => x.st === "pendiente").sort((a, b) => (!!a.posible) - (!!b.posible) || (!!a.limite) - (!!b.limite));
   return {ref: {h: f(ref.h), l: f(ref.l), t: ref.t, size: Math.round((ref.h - ref.l) / pip)}, now, pend, list, nextOpen: closed};
 }
+// ---- Velas exportadas desde el TradingView del trader (market/<PAR>_tv_<intervalo>) ----
+// Intervalo con el formato de TradingView: minutos ("5", "60", "120"…) o "1D", "2D", "1W", "2W", "1M", "2M", "3M", "6M", "12M"
+const tvKeyOf = tf => isMin(tf) ? tf.slice(1) : typeof tf === "number" ? (tf === 24 ? "1D" : String(tf * 60)) : tf[0] === "D" ? tf.slice(1) + "D" : ({W: "1W", W2: "2W", M: "1M", M2: "2M", Q: "3M", M6: "6M", Y: "12M"})[tf];
+const TV_KEYS = new Set(MTF.map(([, tf]) => tvKeyOf(tf)));
+// Une tus velas de TradingView con las descargadas más nuevas (las que empiezan después de tu última vela)
+const withTV = (tv, base) => !tv?.length ? base : [...tv, ...(base || []).filter(b => b.t > tv[tv.length - 1].t)];
+// Pone a tus velas de TradingView la clave y el cierre que usa la página
+function keyTV(bars, tf, anchor) {
+  const dur = isMin(tf) ? +tf.slice(1) * 60 : typeof tf === "number" && tf < 24 ? tf * 3600 : 0;
+  return bars.map(b => { const f = fxClock(b.t * 1000, anchor);
+    const k = isMin(tf) ? f.day + "|" + Math.floor((f.hour * 60 + f.min) / +tf.slice(1)) : typeof tf === "number" ? (tf >= 24 ? f.day : f.day + "|" + Math.floor(f.hour / tf))
+      : tf[0] === "D" ? Math.floor(bizIndex(f.day) / +tf.slice(1)) : tf === "W" ? weekKey(f.day) : tf === "W2" ? week2Key(f.day) : tf === "M" ? f.day.slice(0, 7)
+      : tf === "M2" || tf === "M6" ? monthGroup(f.day, +tf.slice(1)) : tf === "Y" ? f.day.slice(0, 4) : f.day.slice(0, 4) + "Q" + Math.floor((+f.day.slice(5, 7) - 1) / 3);
+    return {...b, k, cnt: tf[0] === "D" ? +tf.slice(1) : 1, end: dur ? (b.t + dur) * 1000 : undefined}; });
+}
 function mtfAnalysis(pair) {
   const m = state.market[pair]; if (!m?.h1?.length && !m?.d1?.length) return null;
   const dec = INS(pair).dec, pip = INS(pair).pip, anchor = anchorOf(pair);
-  const h1 = cleanH1(m.h1 || [], anchor), d1 = dailySeries(h1, m.d1 || [], anchor, INS(pair).grupo === "fx" && /yahoo/i.test(m.sources?.d1 || m.source || ""));
-  const ms = marketState(h1, anchor), mins = Object.fromEntries(["m5", "m15", "m30"].map(k => [k, cleanH1(m[k] || [], anchor)]));
+  const tv = m.tv || {};
+  // Tus velas de TradingView mandan: las de 5, 15, 30 y 60 minutos y las diarias se usan como base de las temporalidades mayores
+  const h1 = cleanH1(withTV(tv["60"], m.h1 || []), anchor);
+  const d1 = tv["1D"]?.length ? withTV(tv["1D"].map(b => ({...b, day: fxClock(b.t * 1000, anchor).day})), dailySeries(h1, m.d1 || [], anchor).filter(b => b.t > tv["1D"].at(-1).t)) : dailySeries(h1, m.d1 || [], anchor, INS(pair).grupo === "fx" && /yahoo/i.test(m.sources?.d1 || m.source || ""));
+  const ms = marketState(h1, anchor), mins = Object.fromEntries(["m5", "m15", "m30"].map(k => [k, cleanH1(withTV(tv[k.slice(1)], m[k] || []), anchor)]));
   const out = MTF.map(([name, tf]) => {
-    const s = seriesFor(tf, h1, d1, anchor, mins), closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
-    return {name, tf, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor, INS(pair).grupo === "fut" ? 1 : pair === "DXY" ? 0.01 : 0.6 * pip)};
+    const tk = tvKeyOf(tf), own = tv[tk]?.length ? keyTV(tv[tk], tf, anchor) : null;
+    const agg = seriesFor(tf, h1, d1, anchor, mins), s = own ? [...own, ...agg.filter(b => b.t >= (own.at(-1).end ? own.at(-1).end / 1000 : own.at(-1).t + 1))] : agg, closed = lastClosed(tf, s, ms) || (s.length > 0 && candleEnd(tf, s[s.length - 1], anchor) <= Date.now());
+    return {name, tf, tv: !!own, n: s.length, closed, st: structureOf(s, dec), rg: rangeOf(s, closed, tf, dec, pip, anchor, INS(pair).grupo === "fut" ? 1 : pair === "DXY" ? 0.01 : 0.6 * pip)};
   });
   out.forEach(r => { const g = r.rg; r.enRango = !!(g && (g.pend.length || g.now?.k === "formacion")); });
   out.market = ms; return out;
@@ -2594,7 +2621,7 @@ function renderMTF() {
   const left = ms => { const d = ms - Date.now(); if (d <= 0) return "cerrando"; const h = Math.floor(d / 3600e3), m = Math.floor(d % 3600e3 / 6e4), D = Math.floor(h / 24); return D >= 2 ? `en ${D} días` : h ? `en ${h} h ${String(m).padStart(2, "0")} min` : `en ${m} min`; };
   const u = INS(pair).unit;
   table($("#mtf-table"), [
-    {h: "Temporalidad", html: 1, f: r => `<b>${esc(r.name)}</b>`},
+    {h: "Temporalidad", html: 1, f: r => `<b>${esc(r.name)}</b>${r.tv ? `<div><span class="pill" title="Velas exportadas desde tu TradingView">TV</span></div>` : ""}`},
     {h: "¿En rango?", html: 1, f: r => { const I = r.enRango && inrOf(r); return I ? `<span class="inr-badge ${I.cls}">${I.arrow} EN RANGO ${I.dir === "Ambos" ? "" : I.dir.toUpperCase()}</span>${I.x.target ? `<div class="small">objetivo <b class="num">${esc(I.x.target)}</b></div>` : ""}${I.forming ? `<div class="small muted">vela actual en formación</div>` : ""}` : `<span class="small muted">No</span>`; }},
     {h: "Estructura", html: 1, f: r => `<span class="pill ${r.st.cls}" title="${esc(r.st.detail)}">${esc(r.st.label)}</span>`},
     {h: "Rango (última vela cerrada)", html: 1, f: r => r.rg ? `<span class="num">${esc(r.rg.ref.h)}</span><br><span class="num">${esc(r.rg.ref.l)}</span><div class="small muted">${esc(r.rg.ref.size ?? "")} ${u}</div>` : "—"},
@@ -2621,30 +2648,41 @@ function parseOHLC(text) {
 }
 function packBars(bars, dec) { const r = v => +v.toFixed(dec); return {t: bars.map(b => b.t), o: bars.map(b => r(b.o)), h: bars.map(b => r(b.h)), l: bars.map(b => r(b.l)), c: bars.map(b => r(b.c))}; }
 function unpackBars(d) { return (d?.t || []).map((t, i) => ({t, o: d.o[i], h: d.h[i], l: d.l[i], c: d.c[i]})); }
+// Instrumento e intervalo a partir del nombre del archivo que exporta TradingView, p. ej. «FOREXCOM_EURUSD, 120.csv» o «CME_MINI_MNQ1!, 1D.csv»
+function tvFileInfo(name) {
+  const m = String(name).match(/^(.+?),\s*([0-9]+[SDWM]?)\b/i), sym = (m ? m[1] : name).toUpperCase();
+  const pair = /MNQ/.test(sym) ? "MNQ" : canonPair(sym.replace(/^[A-Z_]+?_(?=[A-Z0-9!]{3,}$)/, "")) || canonPair(sym);
+  let key = m ? m[2].toUpperCase() : null;
+  if (key && /^\d+$/.test(key) && +key % 1440 === 0 && +key >= 1440) key = (+key / 1440) + "D";
+  if (key === "D") key = "1D"; if (key === "W") key = "1W"; if (key === "M") key = "1M";
+  return {pair, key, symbol: m ? m[1] : ""};
+}
+function tvKeyFromStep(step) {
+  if (step < 86400 * 0.9) return String(Math.round(step / 60));
+  if (step < 86400 * 1.5) return "1D";
+  if (step < 86400 * 6) return Math.round(step / 86400) + "D";
+  if (step < 86400 * 10) return "1W";
+  if (step < 86400 * 20) return "2W";
+  const months = Math.round(step / (86400 * 30.4)); return months + "M";
+}
 $("#mtf-file").addEventListener("change", async e => {
-  const pair = $("#mtf-pair").value, msg = $("#mtf-msg"), files = [...e.target.files];
+  const msg = $("#mtf-msg"), files = [...e.target.files], out = [];
+  msg.textContent = "Leyendo…";
   for (const file of files) {
     try {
       const {bars, step} = parseOHLC(await file.text());
-      const dec = INS(pair).dec;
-      let kind;
-      if (step <= 3600) { // 1H o inferior: se agrupa a 1H y se guardan los últimos ~150 días
-        const h = aggregate(bars, b => Math.floor(b.t / 3600)).slice(-3600);
-        kind = "h1"; state.market[pair] = {...state.market[pair], h1: h, source: "CSV subido"};
-        // el diario largo sale del mismo archivo si cubre más tiempo
-        const d = aggregate(bars, b => fxClock(b.t * 1000, anchorOf(pair)).day);
-        if (d.length > (state.market[pair].d1?.length || 0)) state.market[pair].d1 = d.slice(-1500);
-      } else if (step >= 72000) { kind = "d1"; state.market[pair] = {...state.market[pair], d1: bars.slice(-1500), source: state.market[pair]?.source || "CSV subido"}; }
-      else throw new Error("Sube el gráfico en 1 hora (o menos) o en diario");
-      if (state.db) {
-        const m = state.market[pair];
-        if (m.h1) await state.db.doc(`market/${pair}_h1`).set({...packBars(m.h1, dec), source: m.source, updated: new Date().toISOString()});
-        if (m.d1) await state.db.doc(`market/${pair}_d1`).set({...packBars(m.d1, dec), source: m.source, updated: new Date().toISOString()});
-      }
-      msg.innerHTML = `<span class="pos">${esc(file.name)}: ${bars.length} velas de ${kind === "h1" ? "1 hora o menos" : "1 día"} cargadas para ${pair}.</span>`;
-    } catch (err) { msg.innerHTML = `<span class="neg">${esc(file.name)}: ${esc(err.message || err.code)}</span>`; }
+      const info = tvFileInfo(file.name), pair = info.pair || $("#mtf-pair").value;
+      const key = info.key || tvKeyFromStep(step);
+      if (!INS(pair) || (INS(pair) === INSTR[0] && pair !== "EURUSD")) throw new Error("no sé de qué instrumento es (pon el instrumento arriba antes de subirlo)");
+      if (!TV_KEYS.has(key)) throw new Error(`la temporalidad «${key}» no está en la bitácora (válidas: ${[...TV_KEYS].join(", ")})`);
+      const keep = bars.slice(-5000), dec = INS(pair).dec;
+      const pv = state.market[pair] || {}; state.market[pair] = {...pv, tv: {...(pv.tv || {}), [key]: keep}};
+      if (state.db) await state.db.doc(`market/${pair}_tv_${key}`).set({...packBars(keep, dec), source: "TradingView (exportado por el trader)", symbol: info.symbol, updated: new Date().toISOString()});
+      const lab = (MTF.find(([, tf]) => tvKeyOf(tf) === key) || [key])[0];
+      out.push(`<span class="pos">✓ ${esc(INS(pair).label)} ${esc(lab)}: ${keep.length} velas (hasta ${esc(new Date(keep.at(-1).t * 1000).toLocaleString("es-ES", {timeZone: "Europe/Madrid", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"}))})</span>`);
+    } catch (err) { out.push(`<span class="neg">✗ ${esc(file.name)}: ${esc(err.message || err.code)}</span>`); }
   }
-  e.target.value = ""; renderMTF();
+  msg.innerHTML = out.join("<br>"); e.target.value = ""; renderMTF();
 });
 $("#mtf-pair").addEventListener("change", renderMTF);
 document.addEventListener("click", e => { const b = e.target.closest("[data-mtf]"); if (b) { $("#mtf-pair").value = b.dataset.mtf; renderMTF(); } });
