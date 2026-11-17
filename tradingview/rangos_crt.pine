@@ -100,6 +100,7 @@ tfName(string tf) =>
 var array<string> tfs = str.split(str.replace_all(i_tfs, " ", ""), ",")
 var int nTF = array.size(tfs)
 int chartSec = timeframe.in_seconds()
+float rng = ta.highest(high, 100) - ta.lowest(low, 100)
 
 // Resultados (2 huecos por temporalidad)
 array<int>   cD = array.new<int>(2 * nTF, 0)
@@ -165,7 +166,6 @@ if barstate.islast
         if ng > 0
             // ordenar por precio para separar las etiquetas que quedan muy juntas
             array<int> ord = array.sort_indices(gP, order.descending)
-            float rng = ta.highest(high, 100) - ta.lowest(low, 100)
             float minGap = rng * 0.035
             int   barMs = chartSec * 1000
             float lastP = na
