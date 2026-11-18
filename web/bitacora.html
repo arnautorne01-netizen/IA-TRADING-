@@ -1016,12 +1016,32 @@ Object.defineProperty(state, "profile", {get: () => state.profiles[curMk()], set
 Object.defineProperty(state, "stratChat", {get: () => state.stratChats[curMk()], set: v => { state.stratChats[curMk()] = v; }});
 let col = null;
 
+// Plan B para las imágenes: si "/_blob/<id>" no carga, se usa la dirección que da la lista de archivos guardados
+const assetUrls = new Map();
+let assetUrlsP = null;
+function loadAssetUrls() {
+  if (!state.assets) return Promise.resolve();
+  return assetUrlsP ||= state.assets.list().then(r => { for (const a of r.assets || []) assetUrls.set(a.id, a.url); }).catch(() => {});
+}
+document.addEventListener("error", async e => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || img.dataset.retried === img.getAttribute("src")) return;
+  const src = img.getAttribute("src") || "", m = src.match(/\/_blob\/([0-9a-f]{32})/);
+  if (!m) return;
+  img.dataset.retried = src;
+  await loadAssetUrls();
+  const url = assetUrls.get(m[1]);
+  if (url && url !== src) { img.src = url; }
+  else { img.alt = "Imagen no disponible"; img.style.minWidth = "60px"; img.title = "No se ha podido cargar esta imagen"; }
+}, true);
+
 async function boot() {
   wireTabs(); buildStaticUI();
   renderAll();
   const [db, user, sample, assets] = await Promise.all([use("db"), use("user"), use("sample"), use("assets")]);
   state.sample = sample; state.assets = assets;
   $("#t-shot-wrap").hidden = !assets;
+  if (assets) loadAssetUrls();
   state.imgLimit = null;
   if (sample) { try { const lim = await sample.limits(); state.imgLimit = lim?.images?.maxCount || 0; } catch { state.imgLimit = null; } }
   $("#t-ai").hidden = state.imgLimit === 0;
